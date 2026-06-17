@@ -1,4 +1,4 @@
-"""Unit tests for GeoJSON loading, meshes, planner, and occupancy."""
+"""Unit tests for GeoJSON loading, planner, and occupancy."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from occupancy.voxel_map import build_voxel_map
 from planner.astar import PathPlan, astar_plan, nearest_waypoint_index
 from rl.replay_buffer import Episode, PrioritizedReplayBuffer
 from utils import MetricsTracker, load_config
-from world.city_mesh_generator import CityMeshGenerator
 
 
 @pytest.fixture
@@ -25,14 +24,6 @@ def test_load_and_convert(sample_data):
     buildings, bounds = sample_data
     assert len(buildings) > 0
     assert bounds.max_x > bounds.min_x
-
-
-def test_city_mesh_generator(sample_data, tmp_path):
-    buildings, bounds = sample_data
-    gen = CityMeshGenerator(buildings, bounds, output_dir=tmp_path)
-    city = gen.generate(export=True)
-    assert city.ground is not None
-    assert (tmp_path / "buildings.obj").exists()
 
 
 def test_voxel_map(sample_data):

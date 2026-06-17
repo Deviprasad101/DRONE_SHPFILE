@@ -1,17 +1,15 @@
-"""PyBullet drone simulation with kinematic fallback."""
+"""PyBullet drone simulation with kinematic fallback (footprint-based collision)."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Sequence
 
 import numpy as np
 
 from data_loader.geojson_loader import BuildingFootprint, WorldBounds
 from planner.astar import PathPlan
-from world.city_mesh_generator import CityMesh
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +48,6 @@ class DroneSimulator:
         self,
         buildings: Sequence[BuildingFootprint],
         bounds: WorldBounds,
-        city_mesh: CityMesh,
-        individual_meshes: Sequence,
         timestep: float = 0.02,
         max_velocity: float = 8.0,
         max_yaw_rate: float = 1.5,
@@ -61,8 +57,6 @@ class DroneSimulator:
     ) -> None:
         self.buildings = list(buildings)
         self.bounds = bounds
-        self.city_mesh = city_mesh
-        self.individual_meshes = list(individual_meshes)
         self.timestep = timestep
         self.max_velocity = max_velocity
         self.max_yaw_rate = max_yaw_rate
@@ -78,14 +72,13 @@ class DroneSimulator:
         self._prev_action: np.ndarray | None = None
         self.goal = np.zeros(3, dtype=np.float32)
 
-        # Kinematic fallback state
         self._pos = np.zeros(3, dtype=np.float32)
         self._vel = np.zeros(3, dtype=np.float32)
         self._yaw = 0.0
         self._use_pybullet = HAS_PYBULLET
 
     def initialize_world(self) -> None:
-        """Connect physics engine and load environment meshes."""
+        """Connect physics engine and load static building bodies."""
         if not self._use_pybullet:
             return
         mode = p.GUI if self.gui else p.DIRECT
@@ -96,32 +89,42 @@ class DroneSimulator:
         self.load_buildings()
 
     def load_buildings(self) -> None:
-        """Import building and ground meshes into the physics world."""
+        """Create axis-aligned box colliders from building footprints."""
         if not self._use_pybullet:
             return
         assert self.client_id is not None
-        mesh_dir = Path("world/meshes")
-        mesh_dir.mkdir(parents=True, exist_ok=True)
 
-        ground_path = mesh_dir / "ground_sim.obj"
-        self.city_mesh.ground.export(ground_path)
+        ground_half = [self.bounds.width / 2, self.bounds.height / 2, 0.25]
         ground_col = p.createCollisionShape(
-            p.GEOM_MESH, fileName=str(ground_path), physicsClientId=self.client_id
+            p.GEOM_BOX,
+            halfExtents=ground_half,
+            physicsClientId=self.client_id,
         )
         p.createMultiBody(
-            baseMass=0, baseCollisionShapeIndex=ground_col,
-            basePosition=[0, 0, 0], physicsClientId=self.client_id,
+            baseMass=0,
+            baseCollisionShapeIndex=ground_col,
+            basePosition=[self.bounds.center[0], self.bounds.center[1], -0.25],
+            physicsClientId=self.client_id,
         )
 
-        for idx, mesh in enumerate(self.individual_meshes):
-            path = mesh_dir / f"building_{idx}.obj"
-            mesh.export(path)
+        for building in self.buildings:
+            minx, miny, maxx, maxy = building.polygon.bounds
+            half_x = max((maxx - minx) / 2.0, 0.5)
+            half_y = max((maxy - miny) / 2.0, 0.5)
+            half_z = max(building.height_m / 2.0, 0.5)
+            center_x = (minx + maxx) / 2.0
+            center_y = (miny + maxy) / 2.0
+
             col = p.createCollisionShape(
-                p.GEOM_MESH, fileName=str(path), physicsClientId=self.client_id
+                p.GEOM_BOX,
+                halfExtents=[half_x, half_y, half_z],
+                physicsClientId=self.client_id,
             )
             bid = p.createMultiBody(
-                baseMass=0, baseCollisionShapeIndex=col,
-                basePosition=[0, 0, 0], physicsClientId=self.client_id,
+                baseMass=0,
+                baseCollisionShapeIndex=col,
+                basePosition=[center_x, center_y, half_z],
+                physicsClientId=self.client_id,
             )
             self.building_body_ids.append(bid)
 
@@ -240,7 +243,7 @@ class DroneSimulator:
         )
 
     def check_collision(self) -> bool:
-        """Detect building or ground collision."""
+        """Detect building or ground collision using footprints."""
         state = self._read_state(False)
         from shapely.geometry import Point
 

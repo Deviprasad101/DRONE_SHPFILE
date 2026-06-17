@@ -13,7 +13,6 @@ from data_loader.geojson_loader import load_and_convert
 from occupancy.voxel_map import VoxelMap, build_voxel_map
 from planner.astar import PathPlan, astar_plan, nearest_waypoint_index
 from simulation.simulator import DroneSimulator
-from world.city_mesh_generator import CityMeshGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +40,6 @@ class DroneNavigationEnv(gym.Env):
         )
         self.bounds = bounds.with_margin(sim.get("ground_size_margin", 50.0))
 
-        mesh_gen = CityMeshGenerator(
-            self.buildings, self.bounds, output_dir=geo.get("mesh_output_dir", "world")
-        )
-        self.city_mesh = mesh_gen.generate(export=True)
-        self.individual_meshes = mesh_gen.individual_meshes()
-
         self.voxel_map: VoxelMap = build_voxel_map(
             self.buildings,
             self.bounds,
@@ -58,8 +51,6 @@ class DroneNavigationEnv(gym.Env):
         self.sim = DroneSimulator(
             buildings=self.buildings,
             bounds=self.bounds,
-            city_mesh=self.city_mesh,
-            individual_meshes=self.individual_meshes,
             timestep=sim.get("timestep", 0.02),
             max_velocity=sim.get("max_velocity", 8.0),
             max_yaw_rate=sim.get("max_yaw_rate", 1.5),

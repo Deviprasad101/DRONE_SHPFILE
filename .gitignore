@@ -15,8 +15,6 @@ frontend/tsconfig.tsbuildinfo
 # Runtime artifacts
 logs/
 checkpoints/
-world/meshes/
-world/*.obj
 
 # Environment
 .env

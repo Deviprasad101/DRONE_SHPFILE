@@ -7,14 +7,13 @@ Production-grade system that converts **GeoJSON building footprints** into a **3
 | Phase | Module | Description |
 |-------|--------|-------------|
 | 1 | `data_loader/geojson_loader.py` | GeoPandas + PyProj WGS84 → local ENU |
-| 2 | `world/city_mesh_generator.py` | Trimesh extrusion → `world/buildings.obj` |
-| 3 | `simulation/simulator.py` | PyBullet physics (kinematic fallback) |
-| 4 | `occupancy/voxel_map.py` | 3D voxel grid + distance transform |
-| 5 | `planner/astar.py` | A* with cost map + path smoothing |
-| 6 | `env/drone_navigation_env.py` | Gymnasium RL environment |
-| 7 | `rl/` | DreamerV3 (RSSM, actor, critic, replay) |
-| 8–9 | `train.py` | Training + TensorBoard + checkpoints |
-| 10 | `visualization/visualizer.py` | Interactive PyVista 3D viewer |
+| 2 | `occupancy/voxel_map.py` | 3D voxel grid + distance transform |
+| 3 | `planner/astar.py` | A* with cost map + path smoothing |
+| 4 | `simulation/simulator.py` | PyBullet / kinematic sim (footprint collision) |
+| 5 | `env/drone_navigation_env.py` | Gymnasium RL environment |
+| 6 | `rl/` | DreamerV3 (RSSM, actor, critic, replay) |
+| 7–8 | `train.py` | Training + TensorBoard + checkpoints |
+| 9 | `visualization/visualizer.py` | Interactive PyVista 3D viewer |
 
 ## Requirements
 
@@ -66,7 +65,6 @@ python evaluate.py --checkpoint checkpoints/dreamer_final.pt --config configs/de
 ```
 ├── data/buildings.geojson
 ├── data_loader/geojson_loader.py
-├── world/city_mesh_generator.py
 ├── simulation/simulator.py
 ├── occupancy/voxel_map.py
 ├── planner/astar.py

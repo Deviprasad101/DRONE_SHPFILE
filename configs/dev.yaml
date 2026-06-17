@@ -2,7 +2,6 @@ geojson:
   path: "data/buildings.geojson"
   default_height_m: 15.0
   max_buildings: 200
-  mesh_output_dir: "world"
 
 coordinates:
   origin_lat: null
