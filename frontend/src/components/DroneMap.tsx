@@ -1,0 +1,252 @@
+import { useEffect, useMemo } from "react";
+import Map, { NavigationControl, ScaleControl, useControl } from "react-map-gl/maplibre";
+import { MapboxOverlay } from "@deck.gl/mapbox";
+import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { COORDINATE_SYSTEM } from "@deck.gl/core";
+import type { Layer } from "@deck.gl/core";
+import type { BuildingCollection } from "../types/geo";
+import "maplibre-gl/dist/maplibre-gl.css";
+
+interface ViewState {
+  longitude: number;
+  latitude: number;
+  zoom: number;
+  pitch: number;
+  bearing: number;
+}
+
+interface DroneMapProps {
+  buildings: BuildingCollection | null;
+  plannedPath: number[][] | null;
+  trajectory: number[][] | null;
+  dronePosition: number[] | null;
+  start: number[] | null;
+  goal: number[] | null;
+  viewState: ViewState;
+  onMove: (vs: ViewState) => void;
+}
+
+function DeckGLOverlay({ layers }: { layers: Layer[] }) {
+  const overlay = useControl<MapboxOverlay>(
+    () => new MapboxOverlay({ interleaved: false })
+  );
+  useEffect(() => {
+    overlay.setProps({ layers });
+  }, [overlay, layers]);
+  return null;
+}
+
+const LNGLAT = COORDINATE_SYSTEM.LNGLAT;
+const BASE_MAP_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+
+function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
+  return useMemo(() => {
+    if (!buildings?.features?.length) return [];
+    return [
+      new GeoJsonLayer({
+        id: "buildings-3d",
+        data: buildings as GeoJSON.FeatureCollection,
+        coordinateSystem: LNGLAT,
+        extruded: true,
+        wireframe: false,
+        opacity: 0.92,
+        material: {
+          ambient: 0.45,
+          diffuse: 0.65,
+          shininess: 24,
+          specularColor: [180, 180, 200],
+        },
+        getFillColor: (f: GeoJSON.Feature) => {
+          const h = (f.properties as { height_m?: number })?.height_m ?? 15;
+          const t = Math.min(1, h / 60);
+          return [
+            Math.round(70 + t * 40),
+            Math.round(95 + t * 35),
+            Math.round(125 + t * 30),
+            220,
+          ];
+        },
+        getLineColor: [40, 50, 65, 200],
+        getElevation: (f: GeoJSON.Feature) =>
+          (f.properties as { height_m?: number })?.height_m ?? 15,
+        elevationScale: 1,
+        pickable: false,
+      }),
+    ];
+  }, [buildings]);
+}
+
+function useFlightLayers(
+  plannedPath: number[][] | null,
+  trajectory: number[][] | null,
+  dronePosition: number[] | null,
+  start: number[] | null,
+  goal: number[] | null
+): Layer[] {
+  return useMemo(() => {
+    const result: Layer[] = [];
+
+    if (plannedPath && plannedPath.length > 1) {
+      result.push(
+        new PathLayer({
+          id: "planned-path",
+          data: [{ path: plannedPath }],
+          coordinateSystem: LNGLAT,
+          getPath: (d: { path: number[][] }) => d.path as [number, number, number][],
+          getColor: [245, 158, 11, 255],
+          getWidth: 8,
+          widthMinPixels: 4,
+          capRounded: true,
+          jointRounded: true,
+          billboard: false,
+        })
+      );
+    }
+
+    if (trajectory && trajectory.length > 1) {
+      result.push(
+        new PathLayer({
+          id: "trajectory",
+          data: [{ path: trajectory }],
+          coordinateSystem: LNGLAT,
+          getPath: (d: { path: number[][] }) => d.path as [number, number, number][],
+          getColor: [14, 165, 233, 200],
+          getWidth: 5,
+          widthMinPixels: 2,
+          capRounded: true,
+          jointRounded: true,
+        })
+      );
+    }
+
+    if (start) {
+      result.push(
+        new ScatterplotLayer({
+          id: "start-marker",
+          data: [{ position: [start[0], start[1], start[2] ?? 80] as [number, number, number] }],
+          coordinateSystem: LNGLAT,
+          getPosition: (d) => d.position,
+          getFillColor: [37, 99, 235, 255],
+          getRadius: 30,
+          radiusMinPixels: 10,
+          radiusMaxPixels: 18,
+          stroked: true,
+          getLineColor: [255, 255, 255, 230],
+          lineWidthMinPixels: 2,
+        })
+      );
+    }
+
+    if (goal) {
+      result.push(
+        new ScatterplotLayer({
+          id: "goal-marker",
+          data: [{ position: [goal[0], goal[1], goal[2] ?? 80] as [number, number, number] }],
+          coordinateSystem: LNGLAT,
+          getPosition: (d) => d.position,
+          getFillColor: [22, 163, 74, 255],
+          getRadius: 30,
+          radiusMinPixels: 10,
+          radiusMaxPixels: 18,
+          stroked: true,
+          getLineColor: [255, 255, 255, 230],
+          lineWidthMinPixels: 2,
+        })
+      );
+    }
+
+    if (dronePosition) {
+      const alt = (dronePosition[2] ?? 80) + 25;
+      const pos: [number, number, number] = [
+        dronePosition[0],
+        dronePosition[1],
+        alt,
+      ];
+
+      // Outer glow ring
+      result.push(
+        new ScatterplotLayer({
+          id: "drone-glow",
+          data: [{ position: pos }],
+          coordinateSystem: LNGLAT,
+          getPosition: (d) => d.position,
+          getFillColor: [14, 165, 233, 80],
+          getRadius: 55,
+          radiusMinPixels: 22,
+          radiusMaxPixels: 40,
+          stroked: false,
+          pickable: false,
+          parameters: { depthTest: false },
+        })
+      );
+
+      // Drone body
+      result.push(
+        new ScatterplotLayer({
+          id: "drone",
+          data: [{ position: pos }],
+          coordinateSystem: LNGLAT,
+          getPosition: (d) => d.position,
+          getFillColor: [255, 80, 0, 255],
+          getRadius: 35,
+          radiusMinPixels: 14,
+          radiusMaxPixels: 22,
+          stroked: true,
+          getLineColor: [255, 255, 255, 255],
+          lineWidthMinPixels: 3,
+          pickable: false,
+          parameters: { depthTest: false },
+        })
+      );
+    }
+
+    return result;
+  }, [plannedPath, trajectory, dronePosition, start, goal]);
+}
+
+export default function DroneMap({
+  buildings,
+  plannedPath,
+  trajectory,
+  dronePosition,
+  start,
+  goal,
+  viewState,
+  onMove,
+}: DroneMapProps) {
+  const buildingLayers = useBuildingLayers(buildings);
+  const flightLayers = useFlightLayers(
+    plannedPath,
+    trajectory,
+    dronePosition,
+    start,
+    goal
+  );
+  const layers = useMemo(
+    () => [...buildingLayers, ...flightLayers],
+    [buildingLayers, flightLayers]
+  );
+
+  return (
+    <Map
+      {...viewState}
+      onMove={(e) =>
+        onMove({
+          longitude: e.viewState.longitude,
+          latitude: e.viewState.latitude,
+          zoom: e.viewState.zoom,
+          pitch: e.viewState.pitch,
+          bearing: e.viewState.bearing,
+        })
+      }
+      mapStyle={BASE_MAP_STYLE}
+      style={{ width: "100%", height: "100%" }}
+      attributionControl={true}
+      maxPitch={85}
+    >
+      <NavigationControl position="top-right" visualizePitch />
+      <ScaleControl position="bottom-left" />
+      <DeckGLOverlay layers={layers} />
+    </Map>
+  );
+}
