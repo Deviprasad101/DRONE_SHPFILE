@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import Map, { NavigationControl, ScaleControl, useControl } from "react-map-gl/maplibre";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { ScenegraphLayer } from "@deck.gl/mesh-layers";
 import { COORDINATE_SYSTEM } from "@deck.gl/core";
 import type { Layer } from "@deck.gl/core";
 import type { BuildingCollection } from "../types/geo";
@@ -169,37 +170,18 @@ function useFlightLayers(
         alt,
       ];
 
-      // Outer glow ring
+      // 3D drone model — flat/horizontal orientation
       result.push(
-        new ScatterplotLayer({
-          id: "drone-glow",
+        new ScenegraphLayer({
+          id: "drone-3d",
           data: [{ position: pos }],
           coordinateSystem: LNGLAT,
-          getPosition: (d) => d.position,
-          getFillColor: [14, 165, 233, 80],
-          getRadius: 55,
-          radiusMinPixels: 22,
-          radiusMaxPixels: 40,
-          stroked: false,
-          pickable: false,
-          parameters: { depthTest: false },
-        })
-      );
-
-      // Drone body
-      result.push(
-        new ScatterplotLayer({
-          id: "drone",
-          data: [{ position: pos }],
-          coordinateSystem: LNGLAT,
-          getPosition: (d) => d.position,
-          getFillColor: [255, 80, 0, 255],
-          getRadius: 35,
-          radiusMinPixels: 14,
-          radiusMaxPixels: 22,
-          stroked: true,
-          getLineColor: [255, 255, 255, 255],
-          lineWidthMinPixels: 3,
+          scenegraph: "/drone.glb?v=3",
+          getPosition: d => d.position,
+          getOrientation: _d => [0, 0, 0],
+          sizeScale: 40,
+          _lighting: "pbr",
+          getColor: [255, 255, 255, 255],
           pickable: false,
           parameters: { depthTest: false },
         })
