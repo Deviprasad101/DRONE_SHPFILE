@@ -36,7 +36,7 @@ export default function App() {
   const [distance, setDistance] = useState<number | null>(null);
   const [reward, setReward] = useState(0);
   const [stepReward, setStepReward] = useState(0);
-  const [prevDistance, setPrevDistance] = useState<number | null>(null);
+  const [, setPrevDistance] = useState<number | null>(null);
   const [playId, setPlayId] = useState(0);
   const [followDrone, setFollowDrone] = useState(true);
   const [viewState, setViewState] = useState({
