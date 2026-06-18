@@ -3,10 +3,10 @@ import DroneMap from "./components/DroneMap";
 import {
   fetchAllBuildingsInArea,
   fetchBounds,
-  fetchDemoFlight,
   flightCenter,
 } from "./api/client";
 import { useDroneAnimation } from "./hooks/useDroneAnimation";
+import { defaultRouteFromCenter, planPathBetween } from "./utils/flightPath";
 import type { BuildingCollection, FlightPath } from "./types/geo";
 import "./App.css";
 
@@ -24,7 +24,10 @@ function fmtCoord(v: number) {
 export default function App() {
   const [buildings, setBuildings] = useState<BuildingCollection | null>(null);
   const [totalBuildings, setTotalBuildings] = useState(0);
+  const [startPoint, setStartPoint] = useState<number[] | null>(null);
+  const [goalPoint, setGoalPoint] = useState<number[] | null>(null);
   const [flight, setFlight] = useState<FlightPath | null>(null);
+  const [placementMode, setPlacementMode] = useState<"start" | "goal" | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Idle");
@@ -42,35 +45,34 @@ export default function App() {
 
   const trajectory = flight?.trajectory ?? null;
   const plannedPath = flight?.planned_path ?? null;
-  const start = flight?.start ?? null;
-  const goal = flight?.goal ?? null;
 
   const handleFlightComplete = useCallback(() => {
     setPlaying(false);
     setStatus("Goal reached");
-    if (flight) {
-      setReward(100 - flight.trajectory.length);
+    if (goalPoint) {
+      setReward(100 - (trajectory?.length ?? 10));
       setDistance(0);
     }
-  }, [flight]);
+  }, [goalPoint, trajectory?.length]);
 
   const { position: dronePosition, stepIndex, finished, reset: resetDrone } =
     useDroneAnimation(trajectory, 1, playing, playId, handleFlightComplete);
 
-  const loadBuildingsForFlight = useCallback(async (f: FlightPath) => {
-    const lons = f.trajectory.map((p) => p[0]);
-    const lats = f.trajectory.map((p) => p[1]);
-    const pad = 0.012;
-    const bounds = {
-      min_lon: Math.min(...lons) - pad,
-      max_lon: Math.max(...lons) + pad,
-      min_lat: Math.min(...lats) - pad,
-      max_lat: Math.max(...lats) + pad,
-    };
-    const data = await fetchAllBuildingsInArea(bounds, 15000);
-    setBuildings(data);
-    setTotalBuildings(data.meta?.total ?? data.features.length);
-  }, []);
+  const loadBuildingsForArea = useCallback(
+    async (lons: number[], lats: number[]) => {
+      const pad = 0.012;
+      const bounds = {
+        min_lon: Math.min(...lons) - pad,
+        max_lon: Math.max(...lons) + pad,
+        min_lat: Math.min(...lats) - pad,
+        max_lat: Math.max(...lats) + pad,
+      };
+      const data = await fetchAllBuildingsInArea(bounds, 15000);
+      setBuildings(data);
+      setTotalBuildings(data.meta?.total ?? data.features.length);
+    },
+    []
+  );
 
   useEffect(() => {
     (async () => {
@@ -79,70 +81,131 @@ export default function App() {
         const bounds = await fetchBounds();
         const cx = (bounds.min_lon + bounds.max_lon) / 2;
         const cy = (bounds.min_lat + bounds.max_lat) / 2;
+        const { start, goal } = defaultRouteFromCenter(cx, cy);
+
+        setStartPoint(start);
+        setGoalPoint(goal);
         setViewState((vs) => ({
           ...vs,
           longitude: cx,
           latitude: cy,
-        }));
-
-        const demo = await fetchDemoFlight();
-        setFlight(demo);
-        const center = flightCenter(demo.trajectory);
-        setViewState((vs) => ({
-          ...vs,
-          longitude: center.longitude,
-          latitude: center.latitude,
           zoom: 16,
           pitch: 60,
         }));
 
-        await loadBuildingsForFlight(demo);
-        setStatus("Ready — press Start Demo");
+        await loadBuildingsForArea(
+          [start[0], goal[0], cx],
+          [start[1], goal[1], cy]
+        );
+        setStatus("Set start & goal on map, then press Start Demo");
       } catch {
         setStatus("Could not load buildings — start backend on :8000");
       } finally {
         setLoading(false);
       }
     })();
-  }, [loadBuildingsForFlight]);
+  }, [loadBuildingsForArea]);
+
+  const handleMapClick = useCallback(
+    async (lon: number, lat: number) => {
+      const mode = placementMode;
+      if (!mode) return;
+
+      const point = [lon, lat, startPoint?.[2] ?? goalPoint?.[2] ?? 85];
+
+      if (mode === "start") {
+        setStartPoint(point);
+      } else {
+        setGoalPoint(point);
+      }
+
+      setPlacementMode(null);
+      setFlight(null);
+      setPlaying(false);
+      setSteps(0);
+      setDistance(null);
+      setReward(0);
+      setStatus("Route updated — press Start Demo");
+
+      const s = mode === "start" ? point : startPoint;
+      const g = mode === "goal" ? point : goalPoint;
+      if (s && g) {
+        try {
+          await loadBuildingsForArea(
+            [s[0], g[0]],
+            [s[1], g[1]]
+          );
+        } catch {
+          /* keep existing buildings */
+        }
+      }
+    },
+    [placementMode, startPoint, goalPoint, loadBuildingsForArea]
+  );
 
   useEffect(() => {
-    if (!dronePosition || !goal) return;
+    const goal = goalPoint ?? flight?.goal;
+    const pos = dronePosition ?? startPoint;
+    if (!pos || !goal) return;
     setSteps(stepIndex);
-    setDistance(dist3(dronePosition, goal));
+    setDistance(dist3(pos, goal));
     if (playing && !finished) setStatus("Flying");
-  }, [dronePosition, goal, stepIndex, playing, finished]);
+  }, [dronePosition, goalPoint, flight?.goal, stepIndex, playing, finished, startPoint]);
 
   const startDemo = useCallback(async () => {
-    let activeFlight = flight;
-    if (!activeFlight) {
-      try {
-        activeFlight = await fetchDemoFlight();
-        setFlight(activeFlight);
-        await loadBuildingsForFlight(activeFlight);
-      } catch {
-        setStatus("Failed to load demo flight");
-        return;
-      }
+    if (!startPoint || !goalPoint) {
+      setStatus("Set start and goal on the map first");
+      return;
     }
+    if (
+      startPoint[0] === goalPoint[0] &&
+      startPoint[1] === goalPoint[1]
+    ) {
+      setStatus("Start and goal must be different");
+      return;
+    }
+
+    const planned = planPathBetween(startPoint, goalPoint);
+    setFlight(planned);
+    setPlaying(false);
+
+    try {
+      await loadBuildingsForArea(
+        planned.trajectory.map((p) => p[0]),
+        planned.trajectory.map((p) => p[1])
+      );
+      const center = flightCenter(planned.trajectory);
+      setViewState((vs) => ({
+        ...vs,
+        longitude: center.longitude,
+        latitude: center.latitude,
+        zoom: Math.max(vs.zoom, 16),
+      }));
+    } catch {
+      setStatus("Could not reload buildings for route");
+      return;
+    }
+
     setSteps(0);
     setReward(0);
-    setDistance(dist3(activeFlight.start, activeFlight.goal));
+    setDistance(dist3(planned.start, planned.goal));
     setStatus("Flying");
     setPlayId((id) => id + 1);
     setPlaying(true);
-  }, [flight, loadBuildingsForFlight]);
+  }, [startPoint, goalPoint, loadBuildingsForArea]);
 
   const reset = useCallback(() => {
     setPlaying(false);
+    setFlight(null);
     resetDrone();
     setSteps(0);
-    setDistance(flight ? dist3(flight.start, flight.goal) : null);
+    setDistance(
+      startPoint && goalPoint ? dist3(startPoint, goalPoint) : null
+    );
     setStatus("Idle");
     setReward(0);
-  }, [flight, resetDrone]);
+  }, [startPoint, goalPoint, resetDrone]);
 
-  // Keep map centered on drone while flying
   useEffect(() => {
     if (!playing || !dronePosition) return;
     setViewState((vs) => ({
@@ -152,6 +215,7 @@ export default function App() {
     }));
   }, [playing, dronePosition]);
 
+  const displayDrone = playing || flight ? dronePosition : startPoint;
   const visibleCount = buildings?.features.length ?? 0;
 
   return (
@@ -164,7 +228,7 @@ export default function App() {
             type="button"
             className="btn-primary"
             onClick={startDemo}
-            disabled={playing || loading}
+            disabled={playing || loading || !startPoint || !goalPoint}
           >
             Start Demo
           </button>
@@ -179,18 +243,22 @@ export default function App() {
         <p className="hint">
           {loading
             ? "Loading buildings.geojson into 3D view…"
-            : `Showing ${visibleCount.toLocaleString()} of ${totalBuildings.toLocaleString()} buildings in 3D over the base map. Press Start Demo to fly the drone.`}
+            : placementMode
+              ? `Click the map to place ${placementMode === "start" ? "START (blue)" : "GOAL (green)"}`
+              : `Showing ${visibleCount.toLocaleString()} of ${totalBuildings.toLocaleString()} buildings. Use Set Start / Set Goal, click the map, then Start Demo.`}
         </p>
         <div className="sim-canvas">
           <DroneMap
             buildings={buildings}
             plannedPath={plannedPath}
             trajectory={trajectory}
-            dronePosition={dronePosition}
-            start={start}
-            goal={goal}
+            dronePosition={displayDrone}
+            start={startPoint}
+            goal={goalPoint}
             viewState={viewState}
             onMove={setViewState}
+            placementMode={placementMode}
+            onMapClick={handleMapClick}
           />
         </div>
         <div className="stats-row">
@@ -205,27 +273,44 @@ export default function App() {
       </section>
 
       <section className="route-section">
-        <h2>Flight Route</h2>
+        <h2>Select Route</h2>
         <p>
-          Demo path is planned over real building footprints from{" "}
-          <code>data/buildings.geojson</code>. Buildings are extruded to their{" "}
-          <code>height_m</code> in 3D on top of a street base map.
+          Click a button below, then click on the open area of the base map.
+          The drone will fly a path between your start and goal above the 3D buildings.
         </p>
-        {start && goal && (
+        <div className="btn-row">
+          <button
+            type="button"
+            className={placementMode === "start" ? "active" : ""}
+            onClick={() => setPlacementMode("start")}
+            disabled={loading || playing}
+          >
+            Set Start (Blue)
+          </button>
+          <button
+            type="button"
+            className={placementMode === "goal" ? "active" : ""}
+            onClick={() => setPlacementMode("goal")}
+            disabled={loading || playing}
+          >
+            Set Goal (Green)
+          </button>
+        </div>
+        {startPoint && goalPoint && (
           <p className="coords">
             Start{" "}
             <strong>
-              {fmtCoord(start[1])}, {fmtCoord(start[0])}
+              {fmtCoord(startPoint[1])}, {fmtCoord(startPoint[0])}
             </strong>{" "}
             &nbsp;|&nbsp; Goal{" "}
             <strong>
-              {fmtCoord(goal[1])}, {fmtCoord(goal[0])}
+              {fmtCoord(goalPoint[1])}, {fmtCoord(goalPoint[0])}
             </strong>{" "}
             &nbsp;|&nbsp; Altitude{" "}
-            <strong>{start[2]?.toFixed(0) ?? 80} m</strong>
+            <strong>{startPoint[2]?.toFixed(0) ?? 85} m</strong>
           </p>
         )}
-        <p className="hint">Press Start Demo to launch the RL agent drone through the city.</p>
+        <p className="hint">Select start and goal on the map, then press Start Demo.</p>
       </section>
 
       <section className="legend indoor-legend">

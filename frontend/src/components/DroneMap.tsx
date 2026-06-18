@@ -24,6 +24,8 @@ interface DroneMapProps {
   goal: number[] | null;
   viewState: ViewState;
   onMove: (vs: ViewState) => void;
+  placementMode?: "start" | "goal" | null;
+  onMapClick?: (lon: number, lat: number) => void;
 }
 
 function DeckGLOverlay({ layers }: { layers: Layer[] }) {
@@ -213,6 +215,8 @@ export default function DroneMap({
   goal,
   viewState,
   onMove,
+  placementMode = null,
+  onMapClick,
 }: DroneMapProps) {
   const buildingLayers = useBuildingLayers(buildings);
   const flightLayers = useFlightLayers(
@@ -227,6 +231,8 @@ export default function DroneMap({
     [buildingLayers, flightLayers]
   );
 
+  const cursor = placementMode ? "crosshair" : "grab";
+
   return (
     <Map
       {...viewState}
@@ -239,10 +245,16 @@ export default function DroneMap({
           bearing: e.viewState.bearing,
         })
       }
+      onClick={(e) => {
+        if (placementMode && onMapClick) {
+          onMapClick(e.lngLat.lng, e.lngLat.lat);
+        }
+      }}
       mapStyle={BASE_MAP_STYLE}
-      style={{ width: "100%", height: "100%" }}
+      style={{ width: "100%", height: "100%", cursor }}
       attributionControl={true}
       maxPitch={85}
+      dragPan={!placementMode}
     >
       <NavigationControl position="top-right" visualizePitch />
       <ScaleControl position="bottom-left" />
