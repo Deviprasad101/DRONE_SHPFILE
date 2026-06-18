@@ -3,6 +3,7 @@ import DroneMap from "./components/DroneMap";
 import {
   fetchAllBuildingsInArea,
   fetchBounds,
+  fetchPlannedPath,
   flightCenter,
 } from "./api/client";
 import { useDroneAnimation } from "./hooks/useDroneAnimation";
@@ -165,7 +166,16 @@ export default function App() {
       return;
     }
 
-    const planned = planPathBetween(startPoint, goalPoint);
+    setStatus("Planning collision-free route…");
+
+    let planned: FlightPath;
+    try {
+      planned = await fetchPlannedPath(startPoint, goalPoint);
+    } catch {
+      setStatus("Planner unavailable — using straight-line fallback");
+      planned = planPathBetween(startPoint, goalPoint);
+    }
+
     setFlight(planned);
     setPlaying(false);
 
@@ -276,7 +286,7 @@ export default function App() {
         <h2>Select Route</h2>
         <p>
           Click a button below, then click on the open area of the base map.
-          The drone will fly a path between your start and goal above the 3D buildings.
+          The drone will fly an A* path that avoids building footprints between start and goal.
         </p>
         <div className="btn-row">
           <button

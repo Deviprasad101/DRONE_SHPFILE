@@ -8,6 +8,7 @@ import pytest
 from data_loader.geojson_loader import load_and_convert
 from occupancy.voxel_map import build_voxel_map
 from planner.astar import PathPlan, astar_plan, nearest_waypoint_index
+from planner.route_service import plan_route_wgs84
 from rl.replay_buffer import Episode, PrioritizedReplayBuffer
 from utils import MetricsTracker, load_config
 
@@ -40,6 +41,30 @@ def test_astar(sample_data):
     plan = astar_plan((cx - 30, cy - 30), (cx + 30, cy + 30), vmap, 40.0)
     assert isinstance(plan, PathPlan)
     assert len(plan.waypoints) >= 2
+
+
+def test_astar_footprint_blocking(sample_data):
+    buildings, bounds = sample_data
+    vmap = build_voxel_map(buildings, bounds, resolution_m=10.0, clearance_m=3.0)
+    cx, cy = bounds.center
+    direct = astar_plan(
+        (cx - 30, cy - 30), (cx + 30, cy + 30), vmap, 85.0, use_footprint_blocking=True
+    )
+    assert len(direct.waypoints) >= 2
+
+
+def test_plan_route_wgs84():
+    result = plan_route_wgs84(
+        "data/buildings.geojson",
+        80.22,
+        12.99,
+        80.24,
+        13.01,
+        altitude_m=85.0,
+        max_buildings=200,
+    )
+    assert len(result["trajectory"]) >= 2
+    assert result["start"][0] == result["trajectory"][0][0]
 
 
 def test_replay_buffer():

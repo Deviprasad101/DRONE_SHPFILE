@@ -86,6 +86,17 @@ class VoxelMap:
         iz = int(np.clip(iz, 0, self.grid.shape[0] - 1))
         return self.grid[iz].astype(np.float32)
 
+    def footprint_map_2d(self, clearance_m: float = 0.0) -> np.ndarray:
+        """2D occupancy from building footprints (any height), with optional clearance buffer."""
+        from scipy.ndimage import binary_dilation
+
+        occ = (np.max(self.grid, axis=0) > 0).astype(np.uint8)
+        if clearance_m > 0:
+            radius = max(1, int(np.ceil(clearance_m / self.resolution_m)))
+            structure = np.ones((2 * radius + 1, 2 * radius + 1), dtype=bool)
+            occ = binary_dilation(occ, structure=structure).astype(np.uint8)
+        return occ.astype(np.float32)
+
 
 def build_voxel_map(
     buildings: Sequence[BuildingFootprint],

@@ -78,6 +78,25 @@ export async function fetchAllBuildingsInArea(
   };
 }
 
+export async function fetchPlannedPath(
+  start: number[],
+  goal: number[]
+): Promise<FlightPath> {
+  const q = new URLSearchParams({
+    start_lon: String(start[0]),
+    start_lat: String(start[1]),
+    goal_lon: String(goal[0]),
+    goal_lat: String(goal[1]),
+    altitude: String(start[2] ?? goal[2] ?? 85),
+  });
+  const res = await fetch(`${API}/plan-path?${q}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail ?? "Path planning failed");
+  }
+  return res.json();
+}
+
 export async function fetchDemoFlight(): Promise<FlightPath> {
   try {
     const res = await fetch(`${API}/demo-flight`);

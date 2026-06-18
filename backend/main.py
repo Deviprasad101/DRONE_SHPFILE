@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from planner.route_service import plan_route_wgs84  # noqa: E402
+
 GEOJSON_PATH = ROOT / "data" / "buildings.geojson"
 EVAL_PATH = ROOT / "logs" / "eval" / "eval_results.json"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -121,24 +127,45 @@ def get_trajectories() -> dict[str, Any]:
 
 @app.get("/api/demo-flight")
 def demo_flight() -> dict[str, Any]:
-    """Generate a demo flight path weaving through the building area."""
+    """Generate a demo flight path that avoids building footprints."""
     bounds = get_bounds()
     cx = (bounds["min_lon"] + bounds["max_lon"]) / 2
     cy = (bounds["min_lat"] + bounds["max_lat"]) / 2
+    d = 0.004
     alt = 85.0
-    d = 0.005
-    trajectory = [
-        [cx - d, cy - d, alt],
-        [cx - d * 0.5, cy - d * 0.25, alt + 8],
-        [cx, cy - d * 0.1, alt + 15],
-        [cx + d * 0.4, cy + d * 0.3, alt + 10],
-        [cx + d * 0.8, cy + d * 0.6, alt + 5],
-        [cx + d, cy + d, alt],
-    ]
-    return {
-        "start": trajectory[0],
-        "goal": trajectory[-1],
-        "planned_path": trajectory,
-        "trajectory": trajectory,
-        "name": "GeoJSON demo flight",
-    }
+    return plan_route_wgs84(
+        GEOJSON_PATH,
+        cx - d,
+        cy - d,
+        cx + d,
+        cy + d,
+        altitude_m=alt,
+    )
+
+
+@app.get("/api/plan-path")
+def plan_path(
+    start_lon: float = Query(..., description="Start longitude (WGS84)"),
+    start_lat: float = Query(..., description="Start latitude (WGS84)"),
+    goal_lon: float = Query(..., description="Goal longitude (WGS84)"),
+    goal_lat: float = Query(..., description="Goal latitude (WGS84)"),
+    altitude: float = Query(85.0, ge=10.0, le=150.0, description="Flight altitude (m)"),
+    clearance: float = Query(8.0, ge=2.0, le=30.0, description="Building clearance (m)"),
+) -> dict[str, Any]:
+    """Plan a collision-free path between start and goal using A* over building footprints."""
+    if start_lon == goal_lon and start_lat == goal_lat:
+        raise HTTPException(status_code=400, detail="Start and goal must be different")
+    if not GEOJSON_PATH.exists():
+        raise HTTPException(status_code=404, detail="buildings.geojson not found")
+    try:
+        return plan_route_wgs84(
+            GEOJSON_PATH,
+            start_lon,
+            start_lat,
+            goal_lon,
+            goal_lat,
+            altitude_m=altitude,
+            clearance_m=clearance,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Path planning failed: {exc}") from exc

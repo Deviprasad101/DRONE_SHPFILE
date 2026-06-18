@@ -73,10 +73,19 @@ def astar_plan(
     voxel_map: VoxelMap,
     flight_altitude_m: float = 40.0,
     clearance_m: float = 3.0,
+    use_footprint_blocking: bool = False,
 ) -> PathPlan:
-    """Plan collision-free path using A* on a 2D cost map at flight altitude."""
-    cost_map = generate_cost_map(voxel_map, flight_altitude_m)
-    occ = voxel_map.cost_map_2d(flight_altitude_m)
+    """Plan collision-free path using A* on a 2D cost map."""
+    if use_footprint_blocking:
+        occ = voxel_map.footprint_map_2d(clearance_m)
+        cost_map = occ.astype(np.float32) * 100.0
+        from scipy.ndimage import distance_transform_edt
+
+        free_dist = distance_transform_edt(1 - occ) * voxel_map.resolution_m
+        cost_map += 2.0 / (free_dist + 0.5)
+    else:
+        cost_map = generate_cost_map(voxel_map, flight_altitude_m)
+        occ = voxel_map.cost_map_2d(flight_altitude_m)
     height, width = occ.shape
     resolution = voxel_map.resolution_m
 
@@ -140,6 +149,27 @@ def astar_plan(
     waypoints = smooth_path(waypoints)
     logger.info("Planned %d waypoints (%.1fm)", len(waypoints), PathPlan(waypoints, resolution, flight_altitude_m).length)
     return PathPlan(waypoints=waypoints, grid_resolution_m=resolution, flight_altitude_m=flight_altitude_m)
+
+
+def densify_path(
+    waypoints: Sequence[tuple[float, float, float]],
+    spacing_m: float = 25.0,
+) -> list[tuple[float, float, float]]:
+    """Insert intermediate points along straight segments for smooth animation."""
+    if len(waypoints) <= 1:
+        return list(waypoints)
+
+    dense: list[tuple[float, float, float]] = [tuple(waypoints[0])]
+    for a, b in zip(waypoints[:-1], waypoints[1:]):
+        pa, pb = np.array(a), np.array(b)
+        seg_len = float(np.linalg.norm(pb - pa))
+        steps = max(1, int(np.ceil(seg_len / spacing_m)))
+        for i in range(1, steps + 1):
+            t = i / steps
+            pt = tuple(pa + (pb - pa) * t)
+            if pt != dense[-1]:
+                dense.append(pt)
+    return dense
 
 
 def smooth_path(
