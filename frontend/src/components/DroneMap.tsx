@@ -101,6 +101,7 @@ function useFlightLayers(
           capRounded: true,
           jointRounded: true,
           billboard: false,
+          parameters: { depthTest: false },
         })
       );
     }
@@ -117,6 +118,7 @@ function useFlightLayers(
           widthMinPixels: 2,
           capRounded: true,
           jointRounded: true,
+          parameters: { depthTest: false },
         })
       );
     }
@@ -135,6 +137,7 @@ function useFlightLayers(
           stroked: true,
           getLineColor: [255, 255, 255, 230],
           lineWidthMinPixels: 2,
+          parameters: { depthTest: false },
         })
       );
     }
@@ -153,6 +156,7 @@ function useFlightLayers(
           stroked: true,
           getLineColor: [255, 255, 255, 230],
           lineWidthMinPixels: 2,
+          parameters: { depthTest: false },
         })
       );
     }
