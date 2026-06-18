@@ -30,7 +30,7 @@ interface DroneMapProps {
 
 function DeckGLOverlay({ layers }: { layers: Layer[] }) {
   const overlay = useControl<MapboxOverlay>(
-    () => new MapboxOverlay({ interleaved: false })
+    () => new MapboxOverlay({ interleaved: true })
   );
   useEffect(() => {
     overlay.setProps({ layers });

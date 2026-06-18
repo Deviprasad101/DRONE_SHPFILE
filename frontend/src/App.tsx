@@ -38,6 +38,7 @@ export default function App() {
   const [stepReward, setStepReward] = useState(0);
   const [prevDistance, setPrevDistance] = useState<number | null>(null);
   const [playId, setPlayId] = useState(0);
+  const [followDrone, setFollowDrone] = useState(true);
   const [viewState, setViewState] = useState({
     longitude: 80.2292,
     latitude: 12.9982,
@@ -225,6 +226,7 @@ export default function App() {
     setStepReward(0);
     setPrevDistance(dist3(planned.start, planned.goal));
     setDistance(dist3(planned.start, planned.goal));
+    setFollowDrone(true);
     setStatus("Flying");
     setPlayId((id) => id + 1);
     setPlaying(true);
@@ -245,13 +247,13 @@ export default function App() {
   }, [startPoint, goalPoint, resetDrone]);
 
   useEffect(() => {
-    if (!playing || !dronePosition) return;
+    if (!playing || !dronePosition || !followDrone) return;
     setViewState((vs) => ({
       ...vs,
       longitude: dronePosition[0],
       latitude: dronePosition[1],
     }));
-  }, [playing, dronePosition]);
+  }, [playing, dronePosition, followDrone]);
 
   const displayDrone = playing || flight ? dronePosition : startPoint;
   const visibleCount = buildings?.features.length ?? 0;
@@ -273,6 +275,15 @@ export default function App() {
           <button type="button" onClick={reset} disabled={loading}>
             Reset
           </button>
+          {playing && (
+            <button
+              type="button"
+              className={followDrone ? "btn-follow active" : "btn-follow"}
+              onClick={() => setFollowDrone((f) => !f)}
+            >
+              {followDrone ? "Following Drone ✓" : "Follow Drone"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -294,7 +305,11 @@ export default function App() {
             start={startPoint}
             goal={goalPoint}
             viewState={viewState}
-            onMove={setViewState}
+            onMove={(vs) => {
+              setViewState(vs);
+              // If user drags the map while flying, disable auto-follow
+              if (playing) setFollowDrone(false);
+            }}
             placementMode={placementMode}
             onMapClick={handleMapClick}
           />
