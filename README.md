@@ -63,18 +63,69 @@ python evaluate.py --checkpoint checkpoints/dreamer_final.pt --config configs/de
 ## Project Structure
 
 ```
-├── data/buildings.geojson
-├── data_loader/geojson_loader.py
-├── simulation/simulator.py
-├── occupancy/voxel_map.py
-├── planner/astar.py
-├── env/drone_navigation_env.py
-├── rl/  (dreamer, rssm, world_model, actor, critic, replay_buffer)
-├── configs/default.yaml, dev.yaml
-├── visualization/visualizer.py
-├── train.py
-├── evaluate.py
-└── tests/
+DRONE_SHPFILE/
+│
+├── data/
+│   └── buildings.geojson          # GeoJSON building footprints (Chennai)
+│
+├── data_loader/                   # Phase 1 — GeoJSON → local ENU
+│   ├── __init__.py
+│   └── geojson_loader.py
+│
+├── occupancy/                     # Phase 2 — 3D voxel obstacle grid
+│   ├── __init__.py
+│   └── voxel_map.py
+│
+├── planner/                       # Phase 3 — A* path planning
+│   ├── __init__.py
+│   └── astar.py
+│
+├── simulation/                    # Phase 4 — drone physics
+│   ├── __init__.py
+│   └── simulator.py               # PyBullet or kinematic fallback
+│
+├── env/                           # Phase 5 — Gymnasium RL environment
+│   ├── __init__.py
+│   └── drone_navigation_env.py
+│
+├── rl/                            # Phase 6 — DreamerV3 agent
+│   ├── __init__.py
+│   ├── dreamer.py
+│   ├── rssm.py
+│   ├── world_model.py
+│   ├── actor.py
+│   ├── critic.py
+│   └── replay_buffer.py
+│
+├── visualization/                 # Phase 7 — PyVista 3D viewer
+│   ├── __init__.py
+│   └── visualizer.py
+│
+├── configs/
+│   ├── default.yaml               # Full training config
+│   └── dev.yaml                   # Fast dev config (200 buildings)
+│
+├── backend/                       # FastAPI for React frontend
+│   ├── main.py
+│   └── requirements.txt
+│
+├── frontend/                      # React 3D map + drone demo
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── api/client.ts
+│   │   ├── components/DroneMap.tsx
+│   │   ├── hooks/useDroneAnimation.ts
+│   │   └── utils/flightPath.ts
+│   └── package.json
+│
+├── tests/
+│   ├── test_geojson.py
+│   └── test_dreamer.py
+│
+├── train.py                       # RL training entry point
+├── train_dreamer.py               # Backward-compatible wrapper
+├── evaluate.py                    # Model evaluation
+└── utils.py                       # Config + metrics helpers
 ```
 
 ## Observation & Action
