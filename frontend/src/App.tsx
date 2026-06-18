@@ -35,6 +35,8 @@ export default function App() {
   const [steps, setSteps] = useState(0);
   const [distance, setDistance] = useState<number | null>(null);
   const [reward, setReward] = useState(0);
+  const [stepReward, setStepReward] = useState(0);
+  const [prevDistance, setPrevDistance] = useState<number | null>(null);
   const [playId, setPlayId] = useState(0);
   const [viewState, setViewState] = useState({
     longitude: 80.2292,
@@ -49,12 +51,15 @@ export default function App() {
 
   const handleFlightComplete = useCallback(() => {
     setPlaying(false);
-    setStatus("Goal reached");
+    setStatus("Goal reached ✓");
     if (goalPoint) {
-      setReward(100 - (trajectory?.length ?? 10));
+      // +100 goal bonus on arrival
+      const goalBonus = 100.0;
+      setReward((r) => r + goalBonus);
+      setStepReward(goalBonus);
       setDistance(0);
     }
-  }, [goalPoint, trajectory?.length]);
+  }, [goalPoint]);
 
   const { position: dronePosition, stepIndex, finished, reset: resetDrone } =
     useDroneAnimation(trajectory, 1, playing, playId, handleFlightComplete);
@@ -126,6 +131,8 @@ export default function App() {
       setSteps(0);
       setDistance(null);
       setReward(0);
+      setStepReward(0);
+      setPrevDistance(null);
       setStatus("Route updated — press Start Demo");
 
       const s = mode === "start" ? point : startPoint;
@@ -149,7 +156,24 @@ export default function App() {
     const pos = dronePosition ?? startPoint;
     if (!pos || !goal) return;
     setSteps(stepIndex);
-    setDistance(dist3(pos, goal));
+    const newDist = dist3(pos, goal);
+    setDistance(newDist);
+
+    // Compute step reward when actively flying
+    if (playing && !finished && stepIndex > 0) {
+      setPrevDistance((prev) => {
+        const progress = prev !== null ? prev - newDist : 0;
+        // Mirror Python env reward function:
+        const progressReward  = progress * 2.0;   // progress_scale = 2.0
+        const timePenalty     = -0.05;              // time_penalty
+        const energyPenalty   = -0.01;              // small energy penalty
+        const sr = progressReward + timePenalty + energyPenalty;
+        setStepReward(sr);
+        setReward((r) => r + sr);
+        return newDist;
+      });
+    }
+
     if (playing && !finished) setStatus("Flying");
   }, [dronePosition, goalPoint, flight?.goal, stepIndex, playing, finished, startPoint]);
 
@@ -198,6 +222,8 @@ export default function App() {
 
     setSteps(0);
     setReward(0);
+    setStepReward(0);
+    setPrevDistance(dist3(planned.start, planned.goal));
     setDistance(dist3(planned.start, planned.goal));
     setStatus("Flying");
     setPlayId((id) => id + 1);
@@ -214,6 +240,8 @@ export default function App() {
     );
     setStatus("Idle");
     setReward(0);
+    setStepReward(0);
+    setPrevDistance(null);
   }, [startPoint, goalPoint, resetDrone]);
 
   useEffect(() => {
@@ -278,7 +306,18 @@ export default function App() {
             <strong>{distance !== null ? distance.toFixed(5) : "—"}</strong>
           </span>
           <span>Status: <strong>{status}</strong></span>
-          <span>Reward: <strong>{reward.toFixed(1)}</strong></span>
+          <span>
+            Step Reward:{" "}
+            <strong style={{ color: stepReward >= 0 ? "#16a34a" : "#dc2626" }}>
+              {stepReward >= 0 ? "+" : ""}{stepReward.toFixed(3)}
+            </strong>
+          </span>
+          <span>
+            Total Reward:{" "}
+            <strong style={{ color: reward >= 0 ? "#16a34a" : "#dc2626" }}>
+              {reward >= 0 ? "+" : ""}{reward.toFixed(2)}
+            </strong>
+          </span>
         </div>
       </section>
 
