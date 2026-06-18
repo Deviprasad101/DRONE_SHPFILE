@@ -7,7 +7,7 @@ import pytest
 
 from data_loader.geojson_loader import load_and_convert
 from occupancy.voxel_map import build_voxel_map
-from planner.astar import PathPlan, astar_plan, nearest_waypoint_index
+from planner.astar import PathPlan, astar_plan
 from planner.route_service import plan_route_wgs84
 from rl.replay_buffer import Episode, PrioritizedReplayBuffer
 from utils import MetricsTracker, load_config

@@ -11,7 +11,7 @@
 ## Prerequisites
 
 - Node.js 18+
-- Python backend running on port 8000 (serves GeoJSON API)
+- Python backend running on port 8000 (GeoJSON + path planning API)
 
 ## Run
 
@@ -36,15 +36,15 @@ Open **http://localhost:5173**
 ## Features
 
 - 3D extruded buildings from `data/buildings.geojson` (loaded by viewport)
-- Demo flight animation (Play / Pause / Reset)
-- Load evaluation trajectories from `logs/eval/eval_results.json` (after running `evaluate.py`)
-- Start (green), goal (red), drone (cyan), planned path (yellow), trajectory (blue)
+- Set **Start** (blue) and **Goal** (green) by clicking the map
+- **Start Demo** — A* path via `/api/plan-path` that avoids building footprints
+- **Reset** — clear flight and return drone to start
+- Start (blue), goal (green), drone (cyan), flight path (yellow), 3D buildings (gray)
 
 ## Build for production
 
 ```bash
 npm run build
-npm run preview
 ```
 
-Set `VITE_API_URL` if the API is not proxied (update `src/api/client.ts`).
+The backend serves `frontend/dist/` at `http://localhost:8000` when built.

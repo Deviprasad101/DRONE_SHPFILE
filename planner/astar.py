@@ -10,7 +10,6 @@ from typing import Sequence
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-from data_loader.geojson_loader import WorldBounds
 from occupancy.voxel_map import VoxelMap
 
 logger = logging.getLogger(__name__)

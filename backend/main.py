@@ -19,7 +19,6 @@ if str(ROOT) not in sys.path:
 from planner.route_service import plan_route_wgs84  # noqa: E402
 
 GEOJSON_PATH = ROOT / "data" / "buildings.geojson"
-EVAL_PATH = ROOT / "logs" / "eval" / "eval_results.json"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
 app = FastAPI(title="Drone Navigation API", version="1.0.0")
@@ -114,33 +113,6 @@ def get_bounds() -> dict[str, float]:
                 min_lon, max_lon = min(min_lon, lon), max(max_lon, lon)
                 min_lat, max_lat = min(min_lat, lat), max(max_lat, lat)
     return {"min_lon": min_lon, "min_lat": min_lat, "max_lon": max_lon, "max_lat": max_lat}
-
-
-@app.get("/api/trajectories")
-def get_trajectories() -> dict[str, Any]:
-    """Return saved evaluation trajectories if available."""
-    if not EVAL_PATH.exists():
-        return {"episodes": [], "summary": {}}
-    with EVAL_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-@app.get("/api/demo-flight")
-def demo_flight() -> dict[str, Any]:
-    """Generate a demo flight path that avoids building footprints."""
-    bounds = get_bounds()
-    cx = (bounds["min_lon"] + bounds["max_lon"]) / 2
-    cy = (bounds["min_lat"] + bounds["max_lat"]) / 2
-    d = 0.004
-    alt = 85.0
-    return plan_route_wgs84(
-        GEOJSON_PATH,
-        cx - d,
-        cy - d,
-        cx + d,
-        cy + d,
-        altitude_m=alt,
-    )
 
 
 @app.get("/api/plan-path")
