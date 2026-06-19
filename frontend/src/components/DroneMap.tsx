@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import Map, { NavigationControl, ScaleControl, useControl } from "react-map-gl/maplibre";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
@@ -31,11 +31,14 @@ interface DroneMapProps {
 
 function DeckGLOverlay({ layers }: { layers: Layer[] }) {
   const overlay = useControl<MapboxOverlay>(
-    () => new MapboxOverlay({ interleaved: true })
+    () => new MapboxOverlay({ interleaved: true, layers }),
+    () => {},
+    () => {},
+    { position: "top-left" }
   );
-  useEffect(() => {
-    overlay.setProps({ layers });
-  }, [overlay, layers]);
+  // Update layers synchronously on every render — keeps deck.gl in the same
+  // MapLibre GL render frame so buildings never "float" during pan/drag.
+  overlay.setProps({ layers });
   return null;
 }
 
