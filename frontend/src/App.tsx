@@ -65,21 +65,6 @@ export default function App() {
   const { position: dronePosition, stepIndex, finished, reset: resetDrone } =
     useDroneAnimation(trajectory, 1, playing, playId, handleFlightComplete);
 
-  const loadBuildingsForArea = useCallback(
-    async (lons: number[], lats: number[]) => {
-      const pad = 0.012;
-      const bounds = {
-        min_lon: Math.min(...lons) - pad,
-        max_lon: Math.max(...lons) + pad,
-        min_lat: Math.min(...lats) - pad,
-        max_lat: Math.max(...lats) + pad,
-      };
-      const data = await fetchAllBuildingsInArea(bounds, 100000);
-      setBuildings(data);
-      setTotalBuildings(data.meta?.total ?? data.features.length);
-    },
-    []
-  );
 
   useEffect(() => {
     (async () => {
@@ -100,10 +85,12 @@ export default function App() {
           pitch: 60,
         }));
 
-        await loadBuildingsForArea(
-          [start[0], goal[0], cx],
-          [start[1], goal[1], cy]
-        );
+        // Load the ENTIRE dataset bounds in a single request.
+        // Using the full bounds guarantees every building in the GeoJSON
+        // is pre-loaded regardless of where the user places start/goal.
+        const data = await fetchAllBuildingsInArea(bounds);
+        setBuildings(data);
+        setTotalBuildings(data.meta?.total ?? data.features.length);
         setStatus("Set start & goal on map, then press Start Demo");
       } catch {
         setStatus("Could not load buildings — start backend on :8000");
@@ -111,7 +98,7 @@ export default function App() {
         setLoading(false);
       }
     })();
-  }, [loadBuildingsForArea]);
+  }, []);
 
   const handleMapClick = useCallback(
     async (lon: number, lat: number) => {
@@ -135,21 +122,8 @@ export default function App() {
       setStepReward(0);
       setPrevDistance(null);
       setStatus("Route updated — press Start Demo");
-
-      const s = mode === "start" ? point : startPoint;
-      const g = mode === "goal" ? point : goalPoint;
-      if (s && g) {
-        try {
-          await loadBuildingsForArea(
-            [s[0], g[0]],
-            [s[1], g[1]]
-          );
-        } catch {
-          /* keep existing buildings */
-        }
-      }
     },
-    [placementMode, startPoint, goalPoint, loadBuildingsForArea]
+    [placementMode, startPoint, goalPoint]
   );
 
   useEffect(() => {
@@ -204,22 +178,15 @@ export default function App() {
     setFlight(planned);
     setPlaying(false);
 
-    try {
-      await loadBuildingsForArea(
-        planned.trajectory.map((p) => p[0]),
-        planned.trajectory.map((p) => p[1])
-      );
-      const center = flightCenter(planned.trajectory);
-      setViewState((vs) => ({
-        ...vs,
-        longitude: center.longitude,
-        latitude: center.latitude,
-        zoom: Math.max(vs.zoom, 16),
-      }));
-    } catch {
-      setStatus("Could not reload buildings for route");
-      return;
-    }
+    // Pan the camera to the center of the planned route.
+    // Buildings are already fully loaded from startup — no re-fetch needed.
+    const center = flightCenter(planned.trajectory);
+    setViewState((vs) => ({
+      ...vs,
+      longitude: center.longitude,
+      latitude: center.latitude,
+      zoom: Math.max(vs.zoom, 16),
+    }));
 
     setSteps(0);
     setReward(0);
@@ -230,7 +197,7 @@ export default function App() {
     setStatus("Flying");
     setPlayId((id) => id + 1);
     setPlaying(true);
-  }, [startPoint, goalPoint, loadBuildingsForArea]);
+  }, [startPoint, goalPoint]);
 
   const reset = useCallback(() => {
     setPlaying(false);

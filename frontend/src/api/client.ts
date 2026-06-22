@@ -30,10 +30,10 @@ export async function fetchBuildingsInView(
   return res.json();
 }
 
-/** Load all buildings in a bbox (paginated, capped for browser performance). */
+/** Load all buildings in a bbox (paginated — fetches every page until the dataset is exhausted). */
 export async function fetchAllBuildingsInArea(
   bounds: Bounds,
-  maxFeatures = 100000
+  maxFeatures = 500_000
 ): Promise<BuildingCollection> {
   const pageSize = 5000;
   const features: BuildingCollection["features"] = [];
