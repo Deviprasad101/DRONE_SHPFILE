@@ -12,14 +12,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BACKEND_DIR.parent
+
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from planner.route_service import plan_route_wgs84  # noqa: E402
 
-GEOJSON_PATH = ROOT / "data" / "buildings.geojson"
-FRONTEND_DIST = ROOT / "frontend" / "dist"
+GEOJSON_PATH = PROJECT_ROOT / "data" / "buildings.geojson"
+FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 app = FastAPI(title="Drone Navigation API", version="1.0.0")
 app.add_middleware(
