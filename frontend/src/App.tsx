@@ -36,6 +36,7 @@ export default function App() {
   const [distance, setDistance] = useState<number | null>(null);
   const [reward, setReward] = useState(0);
   const [stepReward, setStepReward] = useState(0);
+  const [totalPenalty, setTotalPenalty] = useState(0);
   const [, setPrevDistance] = useState<number | null>(null);
   const [playId, setPlayId] = useState(0);
   const [followDrone, setFollowDrone] = useState(true);
@@ -139,12 +140,14 @@ export default function App() {
       setPrevDistance((prev) => {
         const progress = prev !== null ? prev - newDist : 0;
         // Mirror Python env reward function:
-        const progressReward  = progress * 2.0;   // progress_scale = 2.0
-        const timePenalty     = -0.05;              // time_penalty
-        const energyPenalty   = -0.01;              // small energy penalty
-        const sr = progressReward + timePenalty + energyPenalty;
+        const progressReward = progress * 2.0;   // progress_scale = 2.0
+        const timePenalty    = -0.05;              // time_penalty
+        const energyPenalty  = -0.01;              // small energy penalty
+        const stepPenalty    = timePenalty + energyPenalty;
+        const sr = progressReward + stepPenalty;
         setStepReward(sr);
         setReward((r) => r + sr);
+        setTotalPenalty((p) => p + stepPenalty); // accumulate penalties separately
         return newDist;
       });
     }
@@ -191,6 +194,7 @@ export default function App() {
     setSteps(0);
     setReward(0);
     setStepReward(0);
+    setTotalPenalty(0);
     setPrevDistance(dist3(planned.start, planned.goal));
     setDistance(dist3(planned.start, planned.goal));
     setFollowDrone(true);
@@ -210,6 +214,7 @@ export default function App() {
     setStatus("Idle");
     setReward(0);
     setStepReward(0);
+    setTotalPenalty(0);
     setPrevDistance(null);
   }, [startPoint, goalPoint, resetDrone]);
 
@@ -299,6 +304,15 @@ export default function App() {
             <strong style={{ color: reward >= 0 ? "#16a34a" : "#dc2626" }}>
               {reward >= 0 ? "+" : ""}{reward.toFixed(2)}
             </strong>
+          </span>
+          <span>
+            Penalties:{" "}
+            <strong style={{ color: "#dc2626" }}>
+              {totalPenalty.toFixed(2)}
+            </strong>
+            <small style={{ color: "#9ca3af", marginLeft: 4 }}>
+              (−0.06/step)
+            </small>
           </span>
         </div>
       </section>
