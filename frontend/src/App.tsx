@@ -74,7 +74,7 @@ export default function App() {
         min_lat: Math.min(...lats) - pad,
         max_lat: Math.max(...lats) + pad,
       };
-      const data = await fetchAllBuildingsInArea(bounds, 15000);
+      const data = await fetchAllBuildingsInArea(bounds, 100000);
       setBuildings(data);
       setTotalBuildings(data.meta?.total ?? data.features.length);
     },

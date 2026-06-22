@@ -63,7 +63,7 @@ function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
           specularColor: [180, 180, 200],
         },
         getFillColor: (f: GeoJSON.Feature) => {
-          const h = (f.properties as { height_m?: number })?.height_m ?? 15;
+          const h = (f.properties as { height_m?: number })?.height_m ?? 30;
           const t = Math.min(1, h / 60);
           return [
             Math.round(70 + t * 40),
@@ -74,7 +74,7 @@ function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
         },
         getLineColor: [40, 50, 65, 200],
         getElevation: (f: GeoJSON.Feature) =>
-          (f.properties as { height_m?: number })?.height_m ?? 15,
+          (f.properties as { height_m?: number })?.height_m ?? 30,
         elevationScale: 1,
         pickable: false,
       }),

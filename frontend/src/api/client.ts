@@ -33,7 +33,7 @@ export async function fetchBuildingsInView(
 /** Load all buildings in a bbox (paginated, capped for browser performance). */
 export async function fetchAllBuildingsInArea(
   bounds: Bounds,
-  maxFeatures = 15000
+  maxFeatures = 100000
 ): Promise<BuildingCollection> {
   const pageSize = 5000;
   const features: BuildingCollection["features"] = [];

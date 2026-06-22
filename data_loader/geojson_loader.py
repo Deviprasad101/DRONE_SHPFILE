@@ -16,7 +16,7 @@ from shapely.ops import transform as shapely_transform
 logger = logging.getLogger(__name__)
 
 HEIGHT_KEYS = ("height_m", "height", "HEIGHT", "building_height", "levels")
-DEFAULT_HEIGHT_M = 15.0
+DEFAULT_HEIGHT_M = 30.0
 
 
 @dataclass(frozen=True)

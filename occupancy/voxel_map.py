@@ -86,6 +86,68 @@ class VoxelMap:
         iz = int(np.clip(iz, 0, self.grid.shape[0] - 1))
         return self.grid[iz].astype(np.float32)
 
+    def tall_obstacle_map_2d(self, altitude_m: float, clearance_m: float = 8.0) -> np.ndarray:
+        """2D obstacle map for buildings that reach into the drone's flight band.
+
+        A cell is marked occupied if any voxel layer between
+        (altitude_m - clearance_m) and (altitude_m + clearance_m) is filled.
+        This correctly ignores short buildings the drone can fly over, while
+        blocking buildings that are genuinely too tall to fly past safely.
+        """
+        from scipy.ndimage import binary_dilation
+
+        nz = self.grid.shape[0]
+        iz_low = max(0, int((altitude_m - clearance_m) / self.resolution_m))
+        iz_high = min(nz - 1, int((altitude_m + clearance_m) / self.resolution_m) + 1)
+        # Any building that occupies at least one layer in the flight band is an obstacle
+        band = self.grid[iz_low:iz_high + 1]
+        occ = (np.max(band, axis=0) > 0).astype(np.uint8)
+        # Dilate horizontally to add a safety clearance buffer
+        if clearance_m > 0:
+            radius = max(1, int(np.ceil(clearance_m / self.resolution_m)))
+            structure = np.ones((2 * radius + 1, 2 * radius + 1), dtype=bool)
+            occ = binary_dilation(occ, structure=structure).astype(np.uint8)
+        return occ.astype(np.float32)
+
+    def segment_collides(
+        self,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        altitude_m: float,
+        clearance_m: float = 8.0,
+    ) -> bool:
+        """True if the world-space line segment (x0,y0)→(x1,y1) crosses any obstacle.
+
+        Uses Bresenham's line algorithm to trace every grid cell along the segment
+        and checks each cell against the altitude-aware obstacle band. This is the
+        only correct way to validate interpolated or smoothed path segments.
+        """
+        occ = self.tall_obstacle_map_2d(altitude_m, clearance_m)
+        ix0, iy0, _ = self.world_to_voxel(x0, y0, altitude_m)
+        ix1, iy1, _ = self.world_to_voxel(x1, y1, altitude_m)
+        h, w = occ.shape
+        dx = abs(ix1 - ix0)
+        dy = abs(iy1 - iy0)
+        sx = 1 if ix0 < ix1 else -1
+        sy = 1 if iy0 < iy1 else -1
+        err = dx - dy
+        cx, cy = ix0, iy0
+        while True:
+            if 0 <= cx < w and 0 <= cy < h and occ[cy, cx] > 0:
+                return True
+            if cx == ix1 and cy == iy1:
+                break
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                cx += sx
+            if e2 < dx:
+                err += dx
+                cy += sy
+        return False
+
     def footprint_map_2d(self, clearance_m: float = 0.0) -> np.ndarray:
         """2D occupancy from building footprints (any height), with optional clearance buffer."""
         from scipy.ndimage import binary_dilation
@@ -102,7 +164,7 @@ def build_voxel_map(
     buildings: Sequence[BuildingFootprint],
     bounds: WorldBounds,
     resolution_m: float = 5.0,
-    max_height_m: float = 150.0,
+    max_height_m: float = 200.0,
     clearance_m: float = 0.0,
 ) -> VoxelMap:
     """Voxelize building footprints into a 3D occupancy grid."""

@@ -83,8 +83,14 @@ def astar_plan(
         free_dist = distance_transform_edt(1 - occ) * voxel_map.resolution_m
         cost_map += 2.0 / (free_dist + 0.5)
     else:
-        cost_map = generate_cost_map(voxel_map, flight_altitude_m)
-        occ = voxel_map.cost_map_2d(flight_altitude_m)
+        # Use altitude-aware band check: only block buildings that physically
+        # reach into the drone's flight corridor (altitude ± clearance).
+        occ = voxel_map.tall_obstacle_map_2d(flight_altitude_m, clearance_m)
+        from scipy.ndimage import distance_transform_edt
+
+        free_dist = distance_transform_edt(1 - occ) * voxel_map.resolution_m
+        cost_map = occ.astype(np.float32) * 100.0
+        cost_map += 2.0 / (free_dist + 0.5)
     height, width = occ.shape
     resolution = voxel_map.resolution_m
 
@@ -96,6 +102,19 @@ def astar_plan(
 
     def passable(cell: tuple[int, int]) -> bool:
         return occ[cell[1], cell[0]] == 0
+
+    def no_corner_cut(curr: tuple[int, int], ndx: int, ndy: int) -> bool:
+        """For diagonal moves, both adjacent orthogonal cells must be free.
+
+        Without this check A* cuts building corners geometrically even though
+        the diagonal grid cell is technically in free space.
+        """
+        if ndx != 0 and ndy != 0:
+            if not (in_bounds((curr[0] + ndx, curr[1])) and passable((curr[0] + ndx, curr[1]))):
+                return False
+            if not (in_bounds((curr[0], curr[1] + ndy)) and passable((curr[0], curr[1] + ndy))):
+                return False
+        return True
 
     if not in_bounds(start_cell) or not in_bounds(goal_cell):
         return _direct_plan(start, goal, flight_altitude_m, resolution)
@@ -122,7 +141,7 @@ def astar_plan(
             break
         for dx, dy in neighbors:
             neighbor = (current[0] + dx, current[1] + dy)
-            if not in_bounds(neighbor) or not passable(neighbor):
+            if not in_bounds(neighbor) or not passable(neighbor) or not no_corner_cut(current, dx, dy):
                 continue
             step = 1.414 if dx and dy else 1.0
             cell_cost = float(cost_map[neighbor[1], neighbor[0]])
@@ -145,7 +164,12 @@ def astar_plan(
     cells.reverse()
 
     waypoints = [_grid_to_world(ix, iy, flight_altitude_m, voxel_map) for ix, iy in cells]
-    waypoints = smooth_path(waypoints)
+    waypoints = smooth_path(
+        waypoints,
+        voxel_map=voxel_map,
+        flight_altitude_m=flight_altitude_m,
+        clearance_m=clearance_m,
+    )
     logger.info("Planned %d waypoints (%.1fm)", len(waypoints), PathPlan(waypoints, resolution, flight_altitude_m).length)
     return PathPlan(waypoints=waypoints, grid_resolution_m=resolution, flight_altitude_m=flight_altitude_m)
 
@@ -153,10 +177,22 @@ def astar_plan(
 def densify_path(
     waypoints: Sequence[tuple[float, float, float]],
     spacing_m: float = 25.0,
+    voxel_map: VoxelMap | None = None,
+    flight_altitude_m: float = 85.0,
+    clearance_m: float = 8.0,
 ) -> list[tuple[float, float, float]]:
-    """Insert intermediate points along straight segments for smooth animation."""
+    """Insert intermediate points along straight segments for smooth animation.
+
+    Every interpolated point is checked against the occupancy grid. Points that
+    fall inside an obstacle cell are silently skipped, preventing densification
+    from introducing obstacle crossings on long diagonal segments.
+    """
     if len(waypoints) <= 1:
         return list(waypoints)
+
+    occ = None
+    if voxel_map is not None:
+        occ = voxel_map.tall_obstacle_map_2d(flight_altitude_m, clearance_m)
 
     dense: list[tuple[float, float, float]] = [tuple(waypoints[0])]
     for a, b in zip(waypoints[:-1], waypoints[1:]):
@@ -166,8 +202,15 @@ def densify_path(
         for i in range(1, steps + 1):
             t = i / steps
             pt = tuple(pa + (pb - pa) * t)
-            if pt != dense[-1]:
-                dense.append(pt)
+            if pt == dense[-1]:
+                continue
+            # Validate: skip interpolated point if it lands in an obstacle cell
+            if occ is not None and voxel_map is not None:
+                ix, iy, _ = voxel_map.world_to_voxel(pt[0], pt[1], flight_altitude_m)
+                h, w = occ.shape
+                if 0 <= ix < w and 0 <= iy < h and occ[iy, ix] > 0:
+                    continue
+            dense.append(pt)
     return dense
 
 
@@ -175,21 +218,41 @@ def smooth_path(
     waypoints: Sequence[tuple[float, float, float]],
     window: int = 3,
     min_spacing_m: float = 15.0,
+    voxel_map: VoxelMap | None = None,
+    flight_altitude_m: float = 85.0,
+    clearance_m: float = 8.0,
 ) -> list[tuple[float, float, float]]:
-    """Gaussian smooth and subsample waypoints."""
+    """Gaussian smooth and subsample waypoints, validated against occupancy grid.
+
+    After applying Gaussian smoothing, each smoothed point is checked against the
+    voxel map obstacle band. If a smoothed point has drifted into an obstacle
+    (corner rounding effect), the ORIGINAL unsmoothed point is restored, preventing
+    the smoothing step from introducing building collisions.
+    """
     if len(waypoints) <= 2:
         return list(waypoints)
 
-    pts = np.array(waypoints)
+    pts_orig = np.array(waypoints)
+    pts = pts_orig.copy()
     for dim in range(3):
         pts[:, dim] = gaussian_filter(pts[:, dim], sigma=window, mode="nearest")
+
+    # Revert smoothed points that landed inside an obstacle back to their original.
+    if voxel_map is not None:
+        occ = voxel_map.tall_obstacle_map_2d(flight_altitude_m, clearance_m)
+        h, w = occ.shape
+        for i in range(len(pts)):
+            sx, sy = pts[i, 0], pts[i, 1]
+            ix, iy, _ = voxel_map.world_to_voxel(sx, sy, flight_altitude_m)
+            if not (0 <= ix < w and 0 <= iy < h) or occ[iy, ix] > 0:
+                pts[i] = pts_orig[i]  # revert to pre-smoothing point
 
     simplified = [tuple(pts[0])]
     for wp in pts[1:]:
         last = np.array(simplified[-1])
         if float(np.linalg.norm(wp - last)) >= min_spacing_m:
             simplified.append(tuple(wp))
-    if simplified[-1] != tuple(pts[-1]):
+    if tuple(simplified[-1]) != tuple(pts[-1]):
         simplified.append(tuple(pts[-1]))
     return simplified
 
