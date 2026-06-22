@@ -45,6 +45,52 @@ function DeckGLOverlay({ layers }: { layers: Layer[] }) {
 const LNGLAT = COORDINATE_SYSTEM.LNGLAT;
 const BASE_MAP_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
 
+/**
+ * Catmull-Rom spline interpolation.
+ * Converts sparse waypoints from the A* planner into a smooth continuous
+ * curve that passes exactly through every waypoint but is naturally rounded
+ * between them — giving a realistic flight-path appearance.
+ *
+ * @param points  Array of [lon, lat, alt] waypoints
+ * @param samples Number of interpolated points inserted between each pair
+ */
+function catmullRomSpline(points: number[][], samples = 20): number[][] {
+  if (points.length < 2) return points;
+
+  const result: number[][] = [];
+  // Duplicate the first and last points so the curve reaches the endpoints.
+  const pts = [points[0], ...points, points[points.length - 1]];
+  const tension = 0.5;
+
+  for (let i = 1; i < pts.length - 2; i++) {
+    const p0 = pts[i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2];
+
+    for (let k = 0; k < samples; k++) {
+      const t  = k / samples;
+      const t2 = t * t;
+      const t3 = t2 * t;
+
+      // Standard Catmull-Rom basis functions
+      const b0 = -tension * t3 + 2 * tension * t2 - tension * t;
+      const b1 = (2 - tension) * t3 + (tension - 3) * t2 + 1;
+      const b2 = (tension - 2) * t3 + (3 - 2 * tension) * t2 + tension * t;
+      const b3 =  tension * t3 - tension * t2;
+
+      result.push([
+        b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0],
+        b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1],
+        b0 * (p0[2] ?? 0) + b1 * (p1[2] ?? 0) + b2 * (p2[2] ?? 0) + b3 * (p3[2] ?? 0),
+      ]);
+    }
+  }
+  // Append the final waypoint so the path terminates exactly at the goal.
+  result.push([...points[points.length - 1]]);
+  return result;
+}
+
 function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
   return useMemo(() => {
     if (!buildings?.features?.length) return [];
@@ -92,11 +138,19 @@ function useFlightLayers(
   return useMemo(() => {
     const result: Layer[] = [];
 
-    if (plannedPath && plannedPath.length > 1) {
+    // Smooth the sparse A* waypoints into natural curves before rendering.
+    const smoothedPath = plannedPath && plannedPath.length > 1
+      ? catmullRomSpline(plannedPath, 20)
+      : plannedPath;
+    const smoothedTraj = trajectory && trajectory.length > 1
+      ? catmullRomSpline(trajectory, 20)
+      : trajectory;
+
+    if (smoothedPath && smoothedPath.length > 1) {
       result.push(
         new PathLayer({
           id: "planned-path",
-          data: [{ path: plannedPath }],
+          data: [{ path: smoothedPath }],
           coordinateSystem: LNGLAT,
           getPath: (d: { path: number[][] }) => d.path as [number, number, number][],
           getColor: [245, 158, 11, 255],
@@ -110,11 +164,11 @@ function useFlightLayers(
       );
     }
 
-    if (trajectory && trajectory.length > 1) {
+    if (smoothedTraj && smoothedTraj.length > 1) {
       result.push(
         new PathLayer({
           id: "trajectory",
-          data: [{ path: trajectory }],
+          data: [{ path: smoothedTraj }],
           coordinateSystem: LNGLAT,
           getPath: (d: { path: number[][] }) => d.path as [number, number, number][],
           getColor: [14, 165, 233, 200],
