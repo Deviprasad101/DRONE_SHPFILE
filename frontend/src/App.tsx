@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Play, RotateCcw, MapPin, Eye, Maximize, Sun, Code, Layers, Target, Settings, Activity, Info, Trophy, AlertTriangle, Footprints } from "lucide-react";
+import { Play, RotateCcw, MapPin, Eye, Target, Settings, Activity, Info, Trophy, AlertTriangle, Footprints } from "lucide-react";
 import DroneMap from "./components/DroneMap";
 import {
   fetchAllBuildingsInArea,
@@ -256,14 +256,7 @@ export default function App() {
   const isPlanning = planningProgress !== null;
   const displayPercentage = isPlanning ? planningProgress : flightPercentage;
 
-  // Mock states for layers
-  const [layers, setLayers] = useState({
-    buildings: true,
-    flightPath: true,
-    startGoal: true,
-    satellite: false,
-    roads: true
-  });
+
 
   return (
     <div className="dashboard-app">
@@ -284,11 +277,7 @@ export default function App() {
             <p>Autonomous Navigation with 3D Buildings from GeoJSON (Chennai)</p>
           </div>
         </div>
-        <div className="nav-actions">
-          <button className="icon-btn"><Sun size={18} /></button>
-          <button className="icon-btn"><Code size={18} /></button>
-          <button className="icon-btn with-text"><Maximize size={16} /> Fullscreen</button>
-        </div>
+
       </header>
 
       <main className="dashboard-content">
@@ -333,31 +322,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="card">
-            <h3 className="sidebar-title"><Layers size={16} /> MAP LAYERS</h3>
-            <div className="action-row">
-              <label className="layer-item">
-                <input type="checkbox" checked={layers.buildings} onChange={(e)=>setLayers({...layers, buildings: e.target.checked})} />
-                <Layers size={16} className="layer-icon blue" /> 3D Buildings
-              </label>
-              <label className="layer-item">
-                <input type="checkbox" checked={layers.flightPath} onChange={(e)=>setLayers({...layers, flightPath: e.target.checked})} />
-                <Activity size={16} className="layer-icon blue" /> Flight Path
-              </label>
-              <label className="layer-item">
-                <input type="checkbox" checked={layers.startGoal} onChange={(e)=>setLayers({...layers, startGoal: e.target.checked})} />
-                <MapPin size={16} className="layer-icon green" /> Start / Goal
-              </label>
-              <label className="layer-item">
-                <input type="checkbox" checked={layers.satellite} onChange={(e)=>setLayers({...layers, satellite: e.target.checked})} />
-                <span className="layer-icon" style={{width:16,height:16,display:'inline-block',border:'1px solid #94a3b8',borderRadius:2}}></span> Satellite
-              </label>
-              <label className="layer-item">
-                <input type="checkbox" checked={layers.roads} onChange={(e)=>setLayers({...layers, roads: e.target.checked})} />
-                <MapPin size={16} className="layer-icon blue" /> Roads
-              </label>
-            </div>
-          </div>
+
 
           <div className="card">
             <h3 className="sidebar-title"><Eye size={16} /> VIEW OPTIONS</h3>
@@ -396,12 +361,7 @@ export default function App() {
             </div>
             
             <div className="map-container">
-              {/* Dummy Toolbar */}
-              <div className="map-toolbar">
-                <button className="map-toolbar-btn"><Activity size={16} /></button>
-                <button className="map-toolbar-btn"><MapPin size={16} /></button>
-                <button className="map-toolbar-btn"><Maximize size={16} /></button>
-              </div>
+
               
               <DroneMap
                 buildings={buildings}
@@ -419,7 +379,7 @@ export default function App() {
                 onMapClick={handleMapClick}
               />
               
-              <div className="map-scale">1 km</div>
+
             </div>
 
             <div className="stats-bar">
