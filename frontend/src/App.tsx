@@ -9,6 +9,7 @@ import {
 import { useDroneAnimation } from "./hooks/useDroneAnimation";
 import { defaultRouteFromCenter, planPathBetween } from "./utils/flightPath";
 import type { BuildingCollection, FlightPath, PathResponse } from "./types/geo";
+import ProgressUI from "./components/ProgressUI";
 import "./App.css";
 
 function dist3(a: number[], b: number[]): number {
@@ -41,6 +42,7 @@ export default function App() {
   const [, setPrevDistance] = useState<number | null>(null);
   const [playId, setPlayId] = useState(0);
   const [followDrone, setFollowDrone] = useState(true);
+  const [planningProgress, setPlanningProgress] = useState<number | null>(null);
   const [viewState, setViewState] = useState({
     longitude: 80.2292,
     latitude: 12.9982,
@@ -172,6 +174,17 @@ export default function App() {
     }
 
     setStatus("Planning collision-free routes…");
+    setPlanningProgress(0);
+
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      setPlanningProgress(() => {
+        const elapsed = Date.now() - startTime;
+        // 60000ms time constant makes it extremely slow from the start:
+        // ~3% at 2s, ~8% at 5s, ~15% at 10s, ~28% at 20s
+        return 99 * (1 - Math.exp(-elapsed / 60000));
+      });
+    }, 50);
 
     let planned: PathResponse;
     try {
@@ -182,23 +195,27 @@ export default function App() {
       planned = { paths: [fallback] };
     }
 
-    setFlights(planned.paths);
-    setSelectedFlightIndex(0);
-    setPlaying(false);
+    clearInterval(interval);
+    setPlanningProgress(100);
 
-    // Pan the camera to the center of the planned route.
-    // Buildings are already fully loaded from startup — no re-fetch needed.
-    const center = flightCenter(planned.paths[0].trajectory);
-    setViewState((vs) => ({
-      ...vs,
-      longitude: center.longitude,
-      latitude: center.latitude,
-      zoom: Math.max(vs.zoom, 16),
-    }));
+    setTimeout(() => {
+      setPlanningProgress(null);
+      setFlights(planned.paths);
+      setSelectedFlightIndex(0);
+      setPlaying(false);
 
-    setSteps(0);
-    setDistance(null);
-    setStatus("Select a route and press Confirm & Fly");
+      const center = flightCenter(planned.paths[0].trajectory);
+      setViewState((vs) => ({
+        ...vs,
+        longitude: center.longitude,
+        latitude: center.latitude,
+        zoom: Math.max(vs.zoom, 16),
+      }));
+
+      setSteps(0);
+      setDistance(null);
+      setStatus("Select a route and press Confirm & Fly");
+    }, 600);
   }, [startPoint, goalPoint]);
 
   const confirmAndFly = useCallback(() => {
@@ -242,6 +259,18 @@ export default function App() {
 
   const displayDrone = playing || flights ? dronePosition : startPoint;
   const visibleCount = buildings?.features.length ?? 0;
+  
+  const totalSteps = trajectory ? trajectory.length - 1 : 0;
+  const flightPercentage = playing || finished
+    ? (finished ? 100 : (totalSteps > 0 ? (stepIndex / totalSteps) * 100 : 0))
+    : 0;
+
+  const isPlanning = planningProgress !== null;
+  const displayPercentage = isPlanning ? planningProgress : flightPercentage;
+  const displayTitle = isPlanning ? "PLANNING PROGRESS" : "FLIGHT PROGRESS";
+  const displayStatus = isPlanning 
+    ? (planningProgress >= 100 ? "ROUTES FOUND" : "CALCULATING...") 
+    : (flightPercentage >= 100 ? "FLIGHT COMPLETED" : "IN PROGRESS");
 
   return (
     <div className="indoor-app">
@@ -281,23 +310,29 @@ export default function App() {
               ? `Click the map to place ${placementMode === "start" ? "START (blue)" : "GOAL (green)"}`
               : `Showing ${visibleCount.toLocaleString()} of ${totalBuildings.toLocaleString()} buildings. Use Set Start / Set Goal, click the map, then Start Demo.`}
         </p>
-        <div className="sim-canvas">
-          <DroneMap
-            buildings={buildings}
-            flights={flights}
-            selectedFlightIndex={selectedFlightIndex}
-            dronePosition={displayDrone}
-            start={startPoint}
-            goal={goalPoint}
-            viewState={viewState}
-            onMove={(vs) => {
-              setViewState(vs);
-              // If user drags the map while flying, disable auto-follow
-              if (playing) setFollowDrone(false);
-            }}
-            placementMode={placementMode}
-            onMapClick={handleMapClick}
-          />
+        <div className="sim-layout">
+          <div className="sim-canvas">
+            <DroneMap
+              buildings={buildings}
+              flights={flights}
+              selectedFlightIndex={selectedFlightIndex}
+              dronePosition={displayDrone}
+              start={startPoint}
+              goal={goalPoint}
+              viewState={viewState}
+              onMove={(vs) => {
+                setViewState(vs);
+                if (playing) setFollowDrone(false);
+              }}
+              placementMode={placementMode}
+              onMapClick={handleMapClick}
+            />
+          </div>
+            <ProgressUI
+              percentage={displayPercentage}
+              title={displayTitle}
+              statusLabel={displayStatus}
+            />
         </div>
         <div className="stats-row">
           <span>Steps: <strong>{steps}</strong></span>
