@@ -53,7 +53,6 @@ export default function App() {
 
   const flight = flights ? flights[selectedFlightIndex] : null;
   const trajectory = flight?.trajectory ?? null;
-  const plannedPath = flight?.planned_path ?? null;
 
   const handleFlightComplete = useCallback(() => {
     setPlaying(false);
