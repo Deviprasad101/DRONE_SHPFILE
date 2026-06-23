@@ -18,6 +18,10 @@ export interface FlightPath {
   name?: string;
 }
 
+export interface PathResponse {
+  paths: FlightPath[];
+}
+
 export interface Bounds {
   min_lon: number;
   min_lat: number;

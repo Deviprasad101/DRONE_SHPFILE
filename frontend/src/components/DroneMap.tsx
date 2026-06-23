@@ -5,7 +5,7 @@ import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { ScenegraphLayer } from "@deck.gl/mesh-layers";
 import { COORDINATE_SYSTEM } from "@deck.gl/core";
 import type { Layer } from "@deck.gl/core";
-import type { BuildingCollection } from "../types/geo";
+import type { BuildingCollection, FlightPath } from "../types/geo";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 interface ViewState {
@@ -18,8 +18,8 @@ interface ViewState {
 
 interface DroneMapProps {
   buildings: BuildingCollection | null;
-  plannedPath: number[][] | null;
-  trajectory: number[][] | null;
+  flights: FlightPath[] | null;
+  selectedFlightIndex: number;
   dronePosition: number[] | null;
   start: number[] | null;
   goal: number[] | null;
@@ -45,6 +45,19 @@ function DeckGLOverlay({ layers }: { layers: Layer[] }) {
 const LNGLAT = COORDINATE_SYSTEM.LNGLAT;
 const BASE_MAP_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
 
+const PLANNED_COLORS = [
+  [245, 158, 11, 255],  // Amber
+  [236, 72, 153, 255],  // Pink
+  [168, 85, 247, 255],  // Purple
+  [34, 197, 94, 255],   // Green
+];
+
+const TRAJ_COLORS = [
+  [14, 165, 233, 200],  // Sky Blue
+  [244, 63, 94, 200],   // Rose
+  [139, 92, 246, 200],  // Violet
+  [16, 185, 129, 200],  // Emerald
+];
 
 function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
   return useMemo(() => {
@@ -84,8 +97,8 @@ function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
 }
 
 function useFlightLayers(
-  plannedPath: number[][] | null,
-  trajectory: number[][] | null,
+  flights: FlightPath[] | null,
+  selectedFlightIndex: number,
   dronePosition: number[] | null,
   start: number[] | null,
   goal: number[] | null
@@ -93,39 +106,50 @@ function useFlightLayers(
   return useMemo(() => {
     const result: Layer[] = [];
 
-    if (plannedPath && plannedPath.length > 1) {
-      result.push(
-        new PathLayer({
-          id: "planned-path",
-          data: [{ path: plannedPath }],
-          coordinateSystem: LNGLAT,
-          getPath: (d: { path: number[][] }) => d.path as [number, number, number][],
-          getColor: [245, 158, 11, 255],
-          getWidth: 8,
-          widthMinPixels: 4,
-          capRounded: true,
-          jointRounded: true,
-          billboard: false,
-          parameters: { depthTest: false },
-        })
-      );
-    }
+    if (flights) {
+      flights.forEach((flight, index) => {
+        const isSelected = index === selectedFlightIndex;
+        const plannedPath = flight.planned_path;
+        const trajectory = flight.trajectory;
 
-    if (trajectory && trajectory.length > 1) {
-      result.push(
-        new PathLayer({
-          id: "trajectory",
-          data: [{ path: trajectory }],
-          coordinateSystem: LNGLAT,
-          getPath: (d: { path: number[][] }) => d.path as [number, number, number][],
-          getColor: [14, 165, 233, 200],
-          getWidth: 5,
-          widthMinPixels: 2,
-          capRounded: true,
-          jointRounded: true,
-          parameters: { depthTest: false },
-        })
-      );
+        const pColor = PLANNED_COLORS[index % PLANNED_COLORS.length];
+        const tColor = TRAJ_COLORS[index % TRAJ_COLORS.length];
+
+        if (plannedPath && plannedPath.length > 1) {
+          result.push(
+            new PathLayer({
+              id: `planned-path-${index}`,
+              data: [{ path: plannedPath }],
+              coordinateSystem: LNGLAT,
+              getPath: (d: { path: number[][] }) => d.path as [number, number, number][],
+              getColor: isSelected ? pColor : [...pColor.slice(0, 3), 100],
+              getWidth: isSelected ? 8 : 4,
+              widthMinPixels: isSelected ? 4 : 2,
+              capRounded: true,
+              jointRounded: true,
+              billboard: false,
+              parameters: { depthTest: false },
+            })
+          );
+        }
+
+        if (trajectory && trajectory.length > 1) {
+          result.push(
+            new PathLayer({
+              id: `trajectory-${index}`,
+              data: [{ path: trajectory }],
+              coordinateSystem: LNGLAT,
+              getPath: (d: { path: number[][] }) => d.path as [number, number, number][],
+              getColor: isSelected ? tColor : [...tColor.slice(0, 3), 80],
+              getWidth: isSelected ? 5 : 3,
+              widthMinPixels: isSelected ? 2 : 1,
+              capRounded: true,
+              jointRounded: true,
+              parameters: { depthTest: false },
+            })
+          );
+        }
+      });
     }
 
     if (start) {
@@ -174,7 +198,6 @@ function useFlightLayers(
         alt,
       ];
 
-      // 3D drone model — flat/horizontal orientation
       result.push(
         new ScenegraphLayer({
           id: "drone-3d",
@@ -193,13 +216,13 @@ function useFlightLayers(
     }
 
     return result;
-  }, [plannedPath, trajectory, dronePosition, start, goal]);
+  }, [flights, selectedFlightIndex, dronePosition, start, goal]);
 }
 
 export default function DroneMap({
   buildings,
-  plannedPath,
-  trajectory,
+  flights,
+  selectedFlightIndex,
   dronePosition,
   start,
   goal,
@@ -210,8 +233,8 @@ export default function DroneMap({
 }: DroneMapProps) {
   const buildingLayers = useBuildingLayers(buildings);
   const flightLayers = useFlightLayers(
-    plannedPath,
-    trajectory,
+    flights,
+    selectedFlightIndex,
     dronePosition,
     start,
     goal

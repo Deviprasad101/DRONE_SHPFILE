@@ -8,7 +8,7 @@ import {
 } from "./api/client";
 import { useDroneAnimation } from "./hooks/useDroneAnimation";
 import { defaultRouteFromCenter, planPathBetween } from "./utils/flightPath";
-import type { BuildingCollection, FlightPath } from "./types/geo";
+import type { BuildingCollection, FlightPath, PathResponse } from "./types/geo";
 import "./App.css";
 
 function dist3(a: number[], b: number[]): number {
@@ -27,7 +27,8 @@ export default function App() {
   const [totalBuildings, setTotalBuildings] = useState(0);
   const [startPoint, setStartPoint] = useState<number[] | null>(null);
   const [goalPoint, setGoalPoint] = useState<number[] | null>(null);
-  const [flight, setFlight] = useState<FlightPath | null>(null);
+  const [flights, setFlights] = useState<FlightPath[] | null>(null);
+  const [selectedFlightIndex, setSelectedFlightIndex] = useState(0);
   const [placementMode, setPlacementMode] = useState<"start" | "goal" | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -48,6 +49,7 @@ export default function App() {
     bearing: -25,
   });
 
+  const flight = flights ? flights[selectedFlightIndex] : null;
   const trajectory = flight?.trajectory ?? null;
   const plannedPath = flight?.planned_path ?? null;
 
@@ -115,7 +117,8 @@ export default function App() {
       }
 
       setPlacementMode(null);
-      setFlight(null);
+      setFlights(null);
+      setSelectedFlightIndex(0);
       setPlaying(false);
       setSteps(0);
       setDistance(null);
@@ -168,22 +171,24 @@ export default function App() {
       return;
     }
 
-    setStatus("Planning collision-free route…");
+    setStatus("Planning collision-free routes…");
 
-    let planned: FlightPath;
+    let planned: PathResponse;
     try {
       planned = await fetchPlannedPath(startPoint, goalPoint);
     } catch {
       setStatus("Planner unavailable — using straight-line fallback");
-      planned = planPathBetween(startPoint, goalPoint);
+      const fallback = planPathBetween(startPoint, goalPoint);
+      planned = { paths: [fallback] };
     }
 
-    setFlight(planned);
+    setFlights(planned.paths);
+    setSelectedFlightIndex(0);
     setPlaying(false);
 
     // Pan the camera to the center of the planned route.
     // Buildings are already fully loaded from startup — no re-fetch needed.
-    const center = flightCenter(planned.trajectory);
+    const center = flightCenter(planned.paths[0].trajectory);
     setViewState((vs) => ({
       ...vs,
       longitude: center.longitude,
@@ -192,20 +197,28 @@ export default function App() {
     }));
 
     setSteps(0);
+    setDistance(null);
+    setStatus("Select a route and press Confirm & Fly");
+  }, [startPoint, goalPoint]);
+
+  const confirmAndFly = useCallback(() => {
+    if (!flight) return;
+    setSteps(0);
     setReward(0);
     setStepReward(0);
     setTotalPenalty(0);
-    setPrevDistance(dist3(planned.start, planned.goal));
-    setDistance(dist3(planned.start, planned.goal));
+    setPrevDistance(dist3(flight.start, flight.goal));
+    setDistance(dist3(flight.start, flight.goal));
     setFollowDrone(true);
     setStatus("Flying");
     setPlayId((id) => id + 1);
     setPlaying(true);
-  }, [startPoint, goalPoint]);
+  }, [flight]);
 
   const reset = useCallback(() => {
     setPlaying(false);
-    setFlight(null);
+    setFlights(null);
+    setSelectedFlightIndex(0);
     resetDrone();
     setSteps(0);
     setDistance(
@@ -227,7 +240,7 @@ export default function App() {
     }));
   }, [playing, dronePosition, followDrone]);
 
-  const displayDrone = playing || flight ? dronePosition : startPoint;
+  const displayDrone = playing || flights ? dronePosition : startPoint;
   const visibleCount = buildings?.features.length ?? 0;
 
   return (
@@ -271,8 +284,8 @@ export default function App() {
         <div className="sim-canvas">
           <DroneMap
             buildings={buildings}
-            plannedPath={plannedPath}
-            trajectory={trajectory}
+            flights={flights}
+            selectedFlightIndex={selectedFlightIndex}
             dronePosition={displayDrone}
             start={startPoint}
             goal={goalPoint}
@@ -341,6 +354,28 @@ export default function App() {
             Set Goal (Green)
           </button>
         </div>
+        {flights && flights.length > 0 && !playing && (
+          <div className="route-options">
+            <p className="hint">Select from available paths:</p>
+            <div className="btn-row" style={{ marginTop: "1rem" }}>
+              {flights.map((f, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={selectedFlightIndex === i ? "active" : ""}
+                  onClick={() => setSelectedFlightIndex(i)}
+                >
+                  {f.name || `Path ${i + 1}`}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginTop: "1rem" }}>
+              <button type="button" className="btn-primary" onClick={confirmAndFly}>
+                Confirm & Fly
+              </button>
+            </div>
+          </div>
+        )}
         {startPoint && goalPoint && (
           <p className="coords">
             Start{" "}

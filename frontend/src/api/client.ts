@@ -1,4 +1,4 @@
-import type { Bounds, BuildingCollection, FlightPath } from "../types/geo";
+import type { Bounds, BuildingCollection, FlightPath, PathResponse } from "../types/geo";
 
 const API = "/api";
 
@@ -58,7 +58,7 @@ export async function fetchAllBuildingsInArea(
 export async function fetchPlannedPath(
   start: number[],
   goal: number[]
-): Promise<FlightPath> {
+): Promise<PathResponse> {
   const q = new URLSearchParams({
     start_lon: String(start[0]),
     start_lat: String(start[1]),
