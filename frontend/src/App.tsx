@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Play, RotateCcw, MapPin, Eye, Maximize, Sun, Code, Layers, Target, Settings, Activity, Info, Trophy, AlertTriangle, Footprints } from "lucide-react";
 import DroneMap from "./components/DroneMap";
 import {
   fetchAllBuildingsInArea,
@@ -58,7 +59,6 @@ export default function App() {
     setPlaying(false);
     setStatus("Goal reached ✓");
     if (goalPoint) {
-      // +100 goal bonus on arrival
       const goalBonus = 100.0;
       setReward((r) => r + goalBonus);
       setStepReward(goalBonus);
@@ -68,7 +68,6 @@ export default function App() {
 
   const { position: dronePosition, stepIndex, finished, reset: resetDrone } =
     useDroneAnimation(trajectory, 1, playing, playId, handleFlightComplete);
-
 
   useEffect(() => {
     (async () => {
@@ -89,9 +88,6 @@ export default function App() {
           pitch: 60,
         }));
 
-        // Load the ENTIRE dataset bounds in a single request.
-        // Using the full bounds guarantees every building in the GeoJSON
-        // is pre-loaded regardless of where the user places start/goal.
         const data = await fetchAllBuildingsInArea(bounds);
         setBuildings(data);
         setTotalBuildings(data.meta?.total ?? data.features.length);
@@ -139,19 +135,17 @@ export default function App() {
     const newDist = dist3(pos, goal);
     setDistance(newDist);
 
-    // Compute step reward when actively flying
     if (playing && !finished && stepIndex > 0) {
       setPrevDistance((prev) => {
         const progress = prev !== null ? prev - newDist : 0;
-        // Mirror Python env reward function:
-        const progressReward = progress * 2.0;   // progress_scale = 2.0
-        const timePenalty    = -0.05;              // time_penalty
-        const energyPenalty  = -0.01;              // small energy penalty
+        const progressReward = progress * 2.0;   
+        const timePenalty    = -0.05;              
+        const energyPenalty  = -0.01;              
         const stepPenalty    = timePenalty + energyPenalty;
         const sr = progressReward + stepPenalty;
         setStepReward(sr);
         setReward((r) => r + sr);
-        setTotalPenalty((p) => p + stepPenalty); // accumulate penalties separately
+        setTotalPenalty((p) => p + stepPenalty); 
         return newDist;
       });
     }
@@ -164,10 +158,7 @@ export default function App() {
       setStatus("Set start and goal on the map first");
       return;
     }
-    if (
-      startPoint[0] === goalPoint[0] &&
-      startPoint[1] === goalPoint[1]
-    ) {
+    if (startPoint[0] === goalPoint[0] && startPoint[1] === goalPoint[1]) {
       setStatus("Start and goal must be different");
       return;
     }
@@ -179,8 +170,6 @@ export default function App() {
     const interval = setInterval(() => {
       setPlanningProgress(() => {
         const elapsed = Date.now() - startTime;
-        // 60000ms time constant makes it extremely slow from the start:
-        // ~3% at 2s, ~8% at 5s, ~15% at 10s, ~28% at 20s
         return 99 * (1 - Math.exp(-elapsed / 60000));
       });
     }, 50);
@@ -266,174 +255,313 @@ export default function App() {
 
   const isPlanning = planningProgress !== null;
   const displayPercentage = isPlanning ? planningProgress : flightPercentage;
-  const displayTitle = isPlanning ? "PLANNING PROGRESS" : "FLIGHT PROGRESS";
-  const displayStatus = isPlanning 
-    ? (planningProgress >= 100 ? "ROUTES FOUND" : "CALCULATING...") 
-    : (flightPercentage >= 100 ? "FLIGHT COMPLETED" : "IN PROGRESS");
+
+  // Mock states for layers
+  const [layers, setLayers] = useState({
+    buildings: true,
+    flightPath: true,
+    startGoal: true,
+    satellite: false,
+    roads: true
+  });
 
   return (
-    <div className="indoor-app">
-      <header className="indoor-header">
-        <h1>RL BASED INDOOR DRONE NAVIGATION</h1>
-        <p>Autonomous Navigation with 3D Buildings from GeoJSON (Chennai)</p>
-        <div className="header-actions">
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={startDemo}
-            disabled={playing || loading || !startPoint || !goalPoint}
-          >
-            Start Demo
-          </button>
-          <button type="button" onClick={reset} disabled={loading}>
-            Reset
-          </button>
-          {playing && (
-            <button
-              type="button"
-              className={followDrone ? "btn-follow active" : "btn-follow"}
-              onClick={() => setFollowDrone((f) => !f)}
-            >
-              {followDrone ? "Following Drone ✓" : "Follow Drone"}
-            </button>
-          )}
+    <div className="dashboard-app">
+      <header className="top-nav">
+        <div className="nav-brand">
+          <div className="nav-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+               <circle cx="12" cy="12" r="2" />
+               <path d="M12 10v-2" />
+               <path d="M12 14v2" />
+               <path d="M10 12H8" />
+               <path d="M14 12h2" />
+            </svg>
+          </div>
+          <div className="nav-titles">
+            <h1>RL INDOOR DRONE NAVIGATION</h1>
+            <p>Autonomous Navigation with 3D Buildings from GeoJSON (Chennai)</p>
+          </div>
+        </div>
+        <div className="nav-actions">
+          <button className="icon-btn"><Sun size={18} /></button>
+          <button className="icon-btn"><Code size={18} /></button>
+          <button className="icon-btn with-text"><Maximize size={16} /> Fullscreen</button>
         </div>
       </header>
 
-      <section className="sim-section">
-        <h2>3D ANIMATION (SIMULATION)</h2>
-        <p className="hint">
-          {loading
-            ? "Loading buildings.geojson into 3D view…"
-            : placementMode
-              ? `Click the map to place ${placementMode === "start" ? "START (blue)" : "GOAL (green)"}`
-              : `Showing ${visibleCount.toLocaleString()} of ${totalBuildings.toLocaleString()} buildings. Use Set Start / Set Goal, click the map, then Start Demo.`}
-        </p>
-        <div className="sim-layout">
-          <div className="sim-canvas">
-            <DroneMap
-              buildings={buildings}
-              flights={flights}
-              selectedFlightIndex={selectedFlightIndex}
-              dronePosition={displayDrone}
-              start={startPoint}
-              goal={goalPoint}
-              viewState={viewState}
-              onMove={(vs) => {
-                setViewState(vs);
-                if (playing) setFollowDrone(false);
-              }}
-              placementMode={placementMode}
-              onMapClick={handleMapClick}
-            />
-          </div>
-            <ProgressUI
-              percentage={displayPercentage}
-              title={displayTitle}
-              statusLabel={displayStatus}
-            />
-        </div>
-        <div className="stats-row">
-          <span>Steps: <strong>{steps}</strong></span>
-          <span>
-            Distance to Goal:{" "}
-            <strong>{distance !== null ? distance.toFixed(5) : "—"}</strong>
-          </span>
-          <span>Status: <strong>{status}</strong></span>
-          <span>
-            Step Reward:{" "}
-            <strong style={{ color: stepReward >= 0 ? "#16a34a" : "#dc2626" }}>
-              {stepReward >= 0 ? "+" : ""}{stepReward.toFixed(3)}
-            </strong>
-          </span>
-          <span>
-            Total Reward:{" "}
-            <strong style={{ color: reward >= 0 ? "#16a34a" : "#dc2626" }}>
-              {reward >= 0 ? "+" : ""}{reward.toFixed(2)}
-            </strong>
-          </span>
-          <span>
-            Penalties:{" "}
-            <strong style={{ color: "#dc2626" }}>
-              {totalPenalty.toFixed(2)}
-            </strong>
-            <small style={{ color: "#9ca3af", marginLeft: 4 }}>
-              (−0.06/step)
-            </small>
-          </span>
-        </div>
-      </section>
-
-      <section className="route-section">
-        <h2>Select Route</h2>
-        <p>
-          Click a button below, then click on the open area of the base map.
-          The drone will fly an A* path that avoids building footprints between start and goal.
-        </p>
-        <div className="btn-row">
-          <button
-            type="button"
-            className={placementMode === "start" ? "active" : ""}
-            onClick={() => setPlacementMode("start")}
-            disabled={loading || playing}
-          >
-            Set Start (Blue)
-          </button>
-          <button
-            type="button"
-            className={placementMode === "goal" ? "active" : ""}
-            onClick={() => setPlacementMode("goal")}
-            disabled={loading || playing}
-          >
-            Set Goal (Green)
-          </button>
-        </div>
-        {flights && flights.length > 0 && !playing && (
-          <div className="route-options">
-            <p className="hint">Select from available paths:</p>
-            <div className="btn-row" style={{ marginTop: "1rem" }}>
-              {flights.map((f, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className={selectedFlightIndex === i ? "active" : ""}
-                  onClick={() => setSelectedFlightIndex(i)}
-                >
-                  {f.name || `Path ${i + 1}`}
-                </button>
-              ))}
-            </div>
-            <div style={{ marginTop: "1rem" }}>
-              <button type="button" className="btn-primary" onClick={confirmAndFly}>
-                Confirm & Fly
+      <main className="dashboard-content">
+        {/* LEFT SIDEBAR */}
+        <aside className="sidebar-left">
+          <div className="card">
+            <h3 className="sidebar-title"><Settings size={16} /> CONTROLS</h3>
+            <div className="action-row">
+              <button 
+                className="btn btn-primary" 
+                onClick={startDemo}
+                disabled={playing || loading || !startPoint || !goalPoint}
+              >
+                <Play size={16} fill="currentColor" /> Start Demo
+              </button>
+              <button className="btn btn-outline" onClick={reset} disabled={loading}>
+                <RotateCcw size={16} /> Reset
               </button>
             </div>
           </div>
-        )}
-        {startPoint && goalPoint && (
-          <p className="coords">
-            Start{" "}
-            <strong>
-              {fmtCoord(startPoint[1])}, {fmtCoord(startPoint[0])}
-            </strong>{" "}
-            &nbsp;|&nbsp; Goal{" "}
-            <strong>
-              {fmtCoord(goalPoint[1])}, {fmtCoord(goalPoint[0])}
-            </strong>{" "}
-            &nbsp;|&nbsp; Altitude{" "}
-            <strong>{startPoint[2]?.toFixed(0) ?? 85} m</strong>
-          </p>
-        )}
-        <p className="hint">Select start and goal on the map, then press Start Demo.</p>
-      </section>
 
-      <section className="legend indoor-legend">
-        <span><i className="swatch blue" /> Start Position</span>
-        <span><i className="swatch green" /> Goal Position</span>
-        <span><i className="swatch yellow" /> Flight Path</span>
-        <span><i className="swatch cyan" /> RL Agent (Drone)</span>
-        <span><i className="swatch gray" /> 3D Buildings (GeoJSON)</span>
-      </section>
+          <div className="card">
+            <h3 className="sidebar-title"><MapPin size={16} /> ROUTE SELECTION</h3>
+            <div className="action-row">
+              <span className="stat-label">Set Start Position</span>
+              <button 
+                className={`btn ${placementMode === "start" ? "btn-light-blue" : "btn-outline"}`}
+                onClick={() => setPlacementMode("start")}
+                disabled={loading || playing}
+              >
+                <MapPin size={16} className="stat-icon" /> Set Start (Blue)
+              </button>
+              
+              <span className="stat-label" style={{marginTop: "0.5rem"}}>Set Goal Position</span>
+              <button 
+                className={`btn ${placementMode === "goal" ? "btn-light-green" : "btn-outline"}`}
+                onClick={() => setPlacementMode("goal")}
+                disabled={loading || playing}
+              >
+                <MapPin size={16} className="stat-icon green" /> Set Goal (Green)
+              </button>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 className="sidebar-title"><Layers size={16} /> MAP LAYERS</h3>
+            <div className="action-row">
+              <label className="layer-item">
+                <input type="checkbox" checked={layers.buildings} onChange={(e)=>setLayers({...layers, buildings: e.target.checked})} />
+                <Layers size={16} className="layer-icon blue" /> 3D Buildings
+              </label>
+              <label className="layer-item">
+                <input type="checkbox" checked={layers.flightPath} onChange={(e)=>setLayers({...layers, flightPath: e.target.checked})} />
+                <Activity size={16} className="layer-icon blue" /> Flight Path
+              </label>
+              <label className="layer-item">
+                <input type="checkbox" checked={layers.startGoal} onChange={(e)=>setLayers({...layers, startGoal: e.target.checked})} />
+                <MapPin size={16} className="layer-icon green" /> Start / Goal
+              </label>
+              <label className="layer-item">
+                <input type="checkbox" checked={layers.satellite} onChange={(e)=>setLayers({...layers, satellite: e.target.checked})} />
+                <span className="layer-icon" style={{width:16,height:16,display:'inline-block',border:'1px solid #94a3b8',borderRadius:2}}></span> Satellite
+              </label>
+              <label className="layer-item">
+                <input type="checkbox" checked={layers.roads} onChange={(e)=>setLayers({...layers, roads: e.target.checked})} />
+                <MapPin size={16} className="layer-icon blue" /> Roads
+              </label>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 className="sidebar-title"><Eye size={16} /> VIEW OPTIONS</h3>
+            <div className="view-toggle">
+              <button className={viewState.pitch === 0 ? "active" : ""} onClick={()=>setViewState({...viewState, pitch: 0})}>2D View</button>
+              <button className={viewState.pitch > 0 ? "active" : ""} onClick={()=>setViewState({...viewState, pitch: 60})}>3D View</button>
+            </div>
+            <div className="slider-container">
+              <span>Tilt</span>
+              <input 
+                type="range" 
+                min="0" max="60" 
+                value={viewState.pitch} 
+                onChange={(e) => setViewState({...viewState, pitch: parseInt(e.target.value)})}
+              />
+              <span style={{minWidth: '24px', textAlign: 'right'}}>{Math.round(viewState.pitch)}°</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* MIDDLE COLUMN */}
+        <div className="main-center">
+          <div className="sim-card">
+            <div className="sim-header">
+              <div className="sim-title">
+                <h2><Activity size={18} /> 3D ANIMATION (SIMULATION)</h2>
+                <p>
+                  {loading
+                    ? "Loading buildings.geojson into 3D view…"
+                    : placementMode
+                      ? `Click the map to place ${placementMode === "start" ? "START (blue)" : "GOAL (green)"}`
+                      : `Showing ${visibleCount.toLocaleString()} of ${totalBuildings.toLocaleString()} buildings. Use Set Start / Set Goal, click the map, then Start Demo.`}
+                </p>
+              </div>
+              <span className="badge-ready">READY</span>
+            </div>
+            
+            <div className="map-container">
+              {/* Dummy Toolbar */}
+              <div className="map-toolbar">
+                <button className="map-toolbar-btn"><Activity size={16} /></button>
+                <button className="map-toolbar-btn"><MapPin size={16} /></button>
+                <button className="map-toolbar-btn"><Maximize size={16} /></button>
+              </div>
+              
+              <DroneMap
+                buildings={buildings}
+                flights={flights}
+                selectedFlightIndex={selectedFlightIndex}
+                dronePosition={displayDrone}
+                start={startPoint}
+                goal={goalPoint}
+                viewState={viewState}
+                onMove={(vs) => {
+                  setViewState(vs);
+                  if (playing) setFollowDrone(false);
+                }}
+                placementMode={placementMode}
+                onMapClick={handleMapClick}
+              />
+              
+              <div className="map-scale">1 km</div>
+            </div>
+
+            <div className="stats-bar">
+              <div className="stat-item">
+                <Footprints className="stat-icon" />
+                <div className="stat-details">
+                  <span className="stat-label">Steps</span>
+                  <span className="stat-value">{steps}</span>
+                </div>
+              </div>
+              
+              <div className="stat-divider"></div>
+              
+              <div className="stat-item">
+                <Target className="stat-icon red" />
+                <div className="stat-details">
+                  <span className="stat-label">Distance to Goal</span>
+                  <span className="stat-value">{distance !== null ? distance.toFixed(5) : "0.00000"} km</span>
+                </div>
+              </div>
+              
+              <div className="stat-divider"></div>
+              
+              <div className="stat-item">
+                <Info className="stat-icon" />
+                <div className="stat-details">
+                  <span className="stat-label">Status</span>
+                  <span className="stat-value" style={{fontSize: "0.85rem"}}>{status}</span>
+                </div>
+              </div>
+
+              <div className="stat-divider"></div>
+
+              <div className="stat-item">
+                <Activity className="stat-icon green" />
+                <div className="stat-details">
+                  <span className="stat-label">Step Reward</span>
+                  <span className={`stat-value ${stepReward >= 0 ? "green" : "red"}`}>
+                    {stepReward >= 0 ? "+" : ""}{stepReward.toFixed(3)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="stat-divider"></div>
+
+              <div className="stat-item">
+                <Trophy className="stat-icon yellow" />
+                <div className="stat-details">
+                  <span className="stat-label">Total Reward</span>
+                  <span className={`stat-value ${reward >= 0 ? "green" : "red"}`}>
+                    {reward >= 0 ? "+" : ""}{reward.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="stat-divider"></div>
+
+              <div className="stat-item">
+                <AlertTriangle className="stat-icon red" />
+                <div className="stat-details">
+                  <span className="stat-label">Penalties</span>
+                  <span className="stat-value red">{totalPenalty.toFixed(2)}</span>
+                  <span className="stat-sub">(−0.06/step)</span>
+                </div>
+              </div>
+            </div>
+
+            {flights && flights.length > 0 && !playing && (
+               <div style={{marginTop: "1rem", display: "flex", gap: "1rem", alignItems: "center"}}>
+                  <span className="stat-label">Select from available paths:</span>
+                  {flights.map((f, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`btn ${selectedFlightIndex === i ? "btn-primary" : "btn-outline"}`}
+                      style={{width: "auto"}}
+                      onClick={() => setSelectedFlightIndex(i)}
+                    >
+                      {f.name || `Path ${i + 1}`}
+                    </button>
+                  ))}
+                  <button type="button" className="btn btn-primary" style={{width: "auto", marginLeft: "auto"}} onClick={confirmAndFly}>
+                    Confirm & Fly
+                  </button>
+               </div>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT SIDEBAR */}
+        <aside className="sidebar-right">
+          <ProgressUI
+            percentage={displayPercentage}
+            title={isPlanning ? "PLANNING PROGRESS" : "FLIGHT PROGRESS"}
+            statusLabel={isPlanning ? (planningProgress >= 100 ? "ROUTES FOUND" : "CALCULATING...") : (flightPercentage >= 100 ? "COMPLETED" : "IN PROGRESS")}
+            timeElapsed={playing ? (stepIndex * 0.5).toFixed(2) : "00:00:00"}
+            estRemaining={playing && totalSteps > 0 ? ((totalSteps - stepIndex) * 0.5).toFixed(2) : "--:--:--"}
+            avgSpeed={playing ? "12.5 m/s" : "0.00 m/s"}
+          />
+
+          <div className="card">
+            <h3 className="sidebar-title" style={{color: "#3b82f6"}}><MapPin size={16} /> ROUTE DETAILS</h3>
+            <div className="route-details">
+              <div className="detail-row">
+                <div className="dot blue"></div>
+                <div className="detail-text">
+                  <span className="label">Start</span>
+                  <span className="val">{startPoint ? `${fmtCoord(startPoint[1])}, ${fmtCoord(startPoint[0])}` : "Not Set"}</span>
+                </div>
+              </div>
+              <div className="detail-row">
+                <div className="dot green"></div>
+                <div className="detail-text">
+                  <span className="label">Goal</span>
+                  <span className="val">{goalPoint ? `${fmtCoord(goalPoint[1])}, ${fmtCoord(goalPoint[0])}` : "Not Set"}</span>
+                </div>
+              </div>
+              <div className="detail-row">
+                <Activity size={12} />
+                <div className="detail-text" style={{gap: '0.5rem'}}>
+                  <span className="label" style={{width:'auto'}}>Altitude</span>
+                  <span className="val" style={{fontWeight: 600}}>{startPoint?.[2]?.toFixed(0) ?? 85} m</span>
+                </div>
+              </div>
+              <div className="route-distance">
+                <span className="label">Route Distance</span>
+                <span className="val">~ {flight ? (flight.trajectory.length * 0.01).toFixed(2) : "0.00"} km (est.)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3 className="sidebar-title" style={{color: "#3b82f6"}}><Info size={16} /> STATUS</h3>
+            <div>
+              <div className="status-badge">{playing ? "Flying" : (loading ? "Loading" : "Idle")}</div>
+              <p className="status-msg">
+                {status}
+              </p>
+            </div>
+          </div>
+        </aside>
+      </main>
     </div>
   );
 }
