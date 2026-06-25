@@ -1,4 +1,4 @@
-import type { Bounds, BuildingCollection, FlightPath, PathResponse } from "../types/geo";
+import type { Bounds, BuildingCollection, PathResponse } from "../types/geo";
 
 const API = "/api";
 
@@ -44,6 +44,10 @@ export async function fetchAllBuildingsInArea(
     const q = new URLSearchParams({
       limit: String(pageSize),
       offset: String(offset),
+      min_lon: String(bounds.min_lon),
+      min_lat: String(bounds.min_lat),
+      max_lon: String(bounds.max_lon),
+      max_lat: String(bounds.max_lat),
     });
     const res = await fetch(`${API}/buildings?${q}`);
     if (!res.ok) throw new Error("Failed to load buildings page");
