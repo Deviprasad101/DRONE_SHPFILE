@@ -41,7 +41,14 @@ export async function fetchAllBuildingsInArea(
   let total = 0;
 
   while (features.length < maxFeatures) {
-    const batch = await fetchBuildingsInView(bounds, pageSize, offset);
+    const q = new URLSearchParams({
+      limit: String(pageSize),
+      offset: String(offset),
+    });
+    const res = await fetch(`${API}/buildings?${q}`);
+    if (!res.ok) throw new Error("Failed to load buildings page");
+    const batch: BuildingCollection = await res.json();
+    
     total = batch.meta?.total ?? batch.features.length;
     features.push(...batch.features);
     if (features.length >= total || batch.features.length < pageSize) break;
