@@ -330,6 +330,17 @@ export default function App() {
               <button className={viewState.pitch === 0 ? "active" : ""} onClick={()=>setViewState({...viewState, pitch: 0})}>2D View</button>
               <button className={viewState.pitch > 0 ? "active" : ""} onClick={()=>setViewState({...viewState, pitch: 60})}>3D View</button>
             </div>
+            
+            <div style={{ marginTop: "0.75rem", marginBottom: "0.75rem" }}>
+              <button 
+                className={`btn ${followDrone ? "btn-light-blue" : "btn-outline"}`}
+                onClick={() => setFollowDrone(!followDrone)}
+                style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}
+              >
+                <Target size={16} style={{ marginRight: "0.5rem" }}/> {followDrone ? "Following Drone" : "Follow Drone"}
+              </button>
+            </div>
+
             <div className="slider-container">
               <span>Tilt</span>
               <input 
