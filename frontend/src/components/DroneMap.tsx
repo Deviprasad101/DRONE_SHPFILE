@@ -1,11 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useCallback, useState } from "react";
 import Map, { NavigationControl, ScaleControl, useControl } from "react-map-gl/maplibre";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { GeoJsonLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { ScenegraphLayer } from "@deck.gl/mesh-layers";
 import { COORDINATE_SYSTEM } from "@deck.gl/core";
-import type { Layer } from "@deck.gl/core";
+import type { Layer, PickingInfo } from "@deck.gl/core";
 import type { BuildingCollection, FlightPath } from "../types/geo";
+import { buildingElevationM, buildingFillColor } from "../utils/buildingHeightColor";
+import { getBuildingTooltipData } from "../utils/buildingInfo";
+import BuildingTooltip from "./BuildingTooltip";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 interface ViewState {
@@ -29,16 +32,22 @@ interface DroneMapProps {
   onMapClick?: (lon: number, lat: number) => void;
 }
 
-function DeckGLOverlay({ layers }: { layers: Layer[] }) {
+function DeckGLOverlay({
+  layers,
+  onHover,
+  getCursor,
+}: {
+  layers: Layer[];
+  onHover?: (info: PickingInfo) => void;
+  getCursor?: (info: PickingInfo) => string;
+}) {
   const overlay = useControl<MapboxOverlay>(
     () => new MapboxOverlay({ interleaved: true, layers }),
     () => {},
     () => {},
     { position: "top-left" }
   );
-  // Update layers synchronously on every render — keeps deck.gl in the same
-  // MapLibre GL render frame so buildings never "float" during pan/drag.
-  overlay.setProps({ layers });
+  overlay.setProps({ layers, onHover, getCursor });
   return null;
 }
 
@@ -76,21 +85,15 @@ function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
           shininess: 24,
           specularColor: [180, 180, 200],
         },
-        getFillColor: (f: GeoJSON.Feature) => {
-          const h = (f.properties as { height_m?: number })?.height_m ?? 30;
-          const t = Math.min(1, h / 60);
-          return [
-            Math.round(70 + t * 40),
-            Math.round(95 + t * 35),
-            Math.round(125 + t * 30),
-            220,
-          ];
-        },
+        getFillColor: (f: GeoJSON.Feature) =>
+          buildingFillColor(f.properties as Record<string, unknown> | null),
         getLineColor: [40, 50, 65, 200],
         getElevation: (f: GeoJSON.Feature) =>
-          (f.properties as { height_m?: number })?.height_m ?? 30,
+          buildingElevationM(f.properties as Record<string, unknown> | null),
         elevationScale: 1,
-        pickable: false,
+        pickable: true,
+        autoHighlight: true,
+        highlightColor: [255, 255, 255, 80],
       }),
     ];
   }, [buildings]);
@@ -231,6 +234,12 @@ export default function DroneMap({
   placementMode = null,
   onMapClick,
 }: DroneMapProps) {
+  const [hover, setHover] = useState<{
+    x: number;
+    y: number;
+    data: ReturnType<typeof getBuildingTooltipData>;
+  } | null>(null);
+
   const buildingLayers = useBuildingLayers(buildings);
   const flightLayers = useFlightLayers(
     flights,
@@ -244,10 +253,33 @@ export default function DroneMap({
     [buildingLayers, flightLayers]
   );
 
-  const cursor = placementMode ? "crosshair" : "grab";
+  const handleHover = useCallback((info: PickingInfo) => {
+    if (info.layer?.id === "buildings-3d" && info.object) {
+      const feature = info.object as GeoJSON.Feature;
+      setHover({
+        x: info.x,
+        y: info.y,
+        data: getBuildingTooltipData(feature, info.index),
+      });
+    } else {
+      setHover(null);
+    }
+  }, []);
+
+  const getCursor = useCallback(
+    (info: PickingInfo) => {
+      if (placementMode) return "crosshair";
+      if (info.layer?.id === "buildings-3d" && info.object) return "pointer";
+      return "grab";
+    },
+    [placementMode]
+  );
+
+  const cursor = placementMode ? "crosshair" : hover ? "pointer" : "grab";
 
   return (
-    <Map
+    <div className="drone-map-wrap">
+      <Map
       {...viewState}
       onMove={(e) =>
         onMove({
@@ -271,7 +303,11 @@ export default function DroneMap({
     >
       <NavigationControl position="top-right" visualizePitch />
       <ScaleControl position="bottom-left" />
-      <DeckGLOverlay layers={layers} />
+      <DeckGLOverlay layers={layers} onHover={handleHover} getCursor={getCursor} />
     </Map>
+      {hover && (
+        <BuildingTooltip data={hover.data} x={hover.x} y={hover.y} />
+      )}
+    </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Play, RotateCcw, MapPin, Eye, Target, Settings, Activity, Info, Trophy, AlertTriangle, Footprints } from "lucide-react";
 import DroneMap from "./components/DroneMap";
+import HeightLegend from "./components/HeightLegend";
 import {
   fetchAllBuildingsInArea,
   fetchBounds,
@@ -373,7 +374,7 @@ export default function App() {
             
             <div className="map-container">
 
-              
+              <HeightLegend />
               <DroneMap
                 buildings={buildings}
                 flights={flights}
