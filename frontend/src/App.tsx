@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Play, RotateCcw, MapPin, Eye, Target, Settings, Activity, Info, Trophy, AlertTriangle, Footprints } from "lucide-react";
 import DroneMap from "./components/DroneMap";
-import HeightLegend from "./components/HeightLegend";
+import HeightFilter from "./components/HeightFilter";
 import {
   fetchAllBuildingsInArea,
   fetchBounds,
@@ -11,6 +11,11 @@ import {
 import { useDroneAnimation } from "./hooks/useDroneAnimation";
 import { defaultRouteFromCenter, planPathBetween } from "./utils/flightPath";
 import type { BuildingCollection, FlightPath, PathResponse } from "./types/geo";
+import {
+  ALL_HEIGHT_CATEGORY_IDS,
+  buildingHeightCategory,
+  type HeightCategoryId,
+} from "./utils/buildingHeightColor";
 import ProgressUI from "./components/ProgressUI";
 import "./App.css";
 
@@ -35,7 +40,13 @@ export default function App() {
   const [placementMode, setPlacementMode] = useState<"start" | "goal" | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(
+    "Loading map bounds…"
+  );
   const [status, setStatus] = useState("Idle");
+  const [enabledHeightCategories, setEnabledHeightCategories] = useState<
+    Set<HeightCategoryId>
+  >(() => new Set(ALL_HEIGHT_CATEGORY_IDS));
   const [steps, setSteps] = useState(0);
   const [distance, setDistance] = useState<number | null>(null);
   const [reward, setReward] = useState(0);
@@ -73,6 +84,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       setLoading(true);
+      setLoadingMessage("Loading map bounds…");
       try {
         const bounds = await fetchBounds();
         const cx = (bounds.min_lon + bounds.max_lon) / 2;
@@ -89,11 +101,14 @@ export default function App() {
           pitch: 60,
         }));
 
+        setLoadingMessage("Loading buildings (GeoJSON)…");
         const data = await fetchAllBuildingsInArea(bounds);
         setBuildings(data);
         setTotalBuildings(data.meta?.total ?? data.features.length);
+        setLoadingMessage(null);
         setStatus("Set start & goal on map, then press Start Demo");
       } catch {
+        setLoadingMessage(null);
         setStatus("Could not load buildings — start backend on :8000");
       } finally {
         setLoading(false);
@@ -165,6 +180,7 @@ export default function App() {
     }
 
     setStatus("Planning collision-free routes…");
+    setLoadingMessage("Planning flight paths (A*)…");
     setPlanningProgress(0);
 
     const startTime = Date.now();
@@ -179,6 +195,7 @@ export default function App() {
     try {
       planned = await fetchPlannedPath(startPoint, goalPoint);
     } catch {
+      setLoadingMessage(null);
       setStatus("Planner unavailable — using straight-line fallback");
       const fallback = planPathBetween(startPoint, goalPoint);
       planned = { paths: [fallback] };
@@ -186,6 +203,7 @@ export default function App() {
 
     clearInterval(interval);
     setPlanningProgress(100);
+    setLoadingMessage(null);
 
     setTimeout(() => {
       setPlanningProgress(null);
@@ -247,7 +265,56 @@ export default function App() {
   }, [playing, dronePosition, followDrone]);
 
   const displayDrone = playing || flights ? dronePosition : startPoint;
-  const visibleCount = buildings?.features.length ?? 0;
+
+  const filteredBuildings = useMemo((): BuildingCollection | null => {
+    if (!buildings) return null;
+    if (enabledHeightCategories.size === ALL_HEIGHT_CATEGORY_IDS.length) {
+      return buildings;
+    }
+    const features = buildings.features.filter((f) =>
+      enabledHeightCategories.has(buildingHeightCategory(f.properties))
+    );
+    return {
+      ...buildings,
+      features,
+      meta: {
+        total: buildings.meta?.total ?? buildings.features.length,
+        limit: features.length,
+        offset: 0,
+      },
+    };
+  }, [buildings, enabledHeightCategories]);
+
+  const toggleHeightCategory = useCallback((id: HeightCategoryId) => {
+    setEnabledHeightCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const visibleCount = filteredBuildings?.features.length ?? 0;
+  const mapBuildingCount = buildings?.features.length ?? 0;
+
+  const statusBadge = loading
+    ? "Loading"
+    : planningProgress !== null
+      ? "Planning"
+      : playing
+        ? "Flying"
+        : placementMode
+          ? "Placing"
+          : "Ready";
+
+  const statusDetail =
+    loading && loadingMessage
+      ? loadingMessage
+      : planningProgress !== null
+        ? planningProgress >= 100
+          ? "Finalizing routes…"
+          : "Planning collision-free routes (A*)…"
+        : status;
   
   const totalSteps = trajectory ? trajectory.length - 1 : 0;
   const flightPercentage = playing || finished
@@ -353,6 +420,13 @@ export default function App() {
               <span style={{minWidth: '24px', textAlign: 'right'}}>{Math.round(viewState.pitch)}°</span>
             </div>
           </div>
+
+          <HeightFilter
+            enabled={enabledHeightCategories}
+            onToggle={toggleHeightCategory}
+            visibleCount={visibleCount}
+            totalCount={mapBuildingCount}
+          />
         </aside>
 
         {/* MIDDLE COLUMN */}
@@ -362,21 +436,33 @@ export default function App() {
               <div className="sim-title">
                 <h2><Activity size={18} /> 3D ANIMATION (SIMULATION)</h2>
                 <p>
-                  {loading
-                    ? "Loading buildings.geojson into 3D view…"
+                  {loading && loadingMessage
+                    ? loadingMessage
                     : placementMode
                       ? `Click the map to place ${placementMode === "start" ? "START (blue)" : "GOAL (green)"}`
-                      : `Showing ${visibleCount.toLocaleString()} of ${totalBuildings.toLocaleString()} buildings. Use Set Start / Set Goal, click the map, then Start Demo.`}
+                      : planningProgress !== null
+                        ? "Computing collision-free routes…"
+                        : `Showing ${visibleCount.toLocaleString()} of ${totalBuildings.toLocaleString()} buildings. Use Set Start / Set Goal, click the map, then Start Demo.`}
                 </p>
               </div>
-              <span className="badge-ready">READY</span>
+              <span
+                className={`sim-badge ${
+                  loading
+                    ? "sim-badge-loading"
+                    : planningProgress !== null
+                      ? "sim-badge-planning"
+                      : playing
+                        ? "sim-badge-flying"
+                        : "sim-badge-ready"
+                }`}
+              >
+                {statusBadge.toUpperCase()}
+              </span>
             </div>
             
             <div className="map-container">
-
-              <HeightLegend />
               <DroneMap
-                buildings={buildings}
+                buildings={filteredBuildings}
                 flights={flights}
                 selectedFlightIndex={selectedFlightIndex}
                 dronePosition={displayDrone}
@@ -419,7 +505,7 @@ export default function App() {
                 <Info className="stat-icon" />
                 <div className="stat-details">
                   <span className="stat-label">Status</span>
-                  <span className="stat-value" style={{fontSize: "0.85rem"}}>{status}</span>
+                  <span className="stat-value" style={{fontSize: "0.85rem"}}>{statusDetail}</span>
                 </div>
               </div>
 
@@ -526,10 +612,10 @@ export default function App() {
           <div className="card">
             <h3 className="sidebar-title" style={{color: "#3b82f6"}}><Info size={16} /> STATUS</h3>
             <div>
-              <div className="status-badge">{playing ? "Flying" : (loading ? "Loading" : "Idle")}</div>
-              <p className="status-msg">
-                {status}
-              </p>
+              <div className={`status-badge status-badge-${statusBadge.toLowerCase()}`}>
+                {statusBadge}
+              </div>
+              <p className="status-msg">{statusDetail}</p>
             </div>
           </div>
         </aside>
