@@ -30,6 +30,7 @@ interface DroneMapProps {
   onMove: (vs: ViewState) => void;
   placementMode?: "start" | "goal" | null;
   onMapClick?: (lon: number, lat: number) => void;
+  useHeightColors?: boolean;
 }
 
 function DeckGLOverlay({
@@ -68,7 +69,10 @@ const TRAJ_COLORS = [
   [16, 185, 129, 200],  // Emerald
 ];
 
-function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
+function useBuildingLayers(
+  buildings: BuildingCollection | null,
+  useHeightColors: boolean
+): Layer[] {
   const featureCount = buildings?.features.length ?? 0;
 
   return useMemo(() => {
@@ -92,7 +96,10 @@ function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
           specularColor: [180, 180, 200],
         },
         getFillColor: (f: GeoJSON.Feature) =>
-          buildingFillColor(f.properties as Record<string, unknown> | null),
+          buildingFillColor(
+            f.properties as Record<string, unknown> | null,
+            useHeightColors
+          ),
         getLineColor: [40, 50, 65, 200],
         getElevation: (f: GeoJSON.Feature) =>
           buildingElevationM(f.properties as Record<string, unknown> | null),
@@ -102,12 +109,12 @@ function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
         highlightColor: [255, 255, 255, 80],
         updateTriggers: {
           data: featureCount,
-          getFillColor: featureCount,
+          getFillColor: [featureCount, useHeightColors],
           getElevation: featureCount,
         },
       }),
     ];
-  }, [buildings, featureCount]);
+  }, [buildings, featureCount, useHeightColors]);
 }
 
 function useFlightLayers(
@@ -244,6 +251,7 @@ export default function DroneMap({
   onMove,
   placementMode = null,
   onMapClick,
+  useHeightColors = true,
 }: DroneMapProps) {
   const [hover, setHover] = useState<{
     x: number;
@@ -251,7 +259,7 @@ export default function DroneMap({
     data: ReturnType<typeof getBuildingTooltipData>;
   } | null>(null);
 
-  const buildingLayers = useBuildingLayers(buildings);
+  const buildingLayers = useBuildingLayers(buildings, useHeightColors);
   const flightLayers = useFlightLayers(
     flights,
     selectedFlightIndex,

@@ -48,6 +48,7 @@ export default function App() {
   const [heightVisibility, setHeightVisibility] = useState<HeightVisibility>(
     defaultHeightVisibility
   );
+  const [plainBuildings, setPlainBuildings] = useState(false);
   const [steps, setSteps] = useState(0);
   const [distance, setDistance] = useState<number | null>(null);
   const [reward, setReward] = useState(0);
@@ -417,6 +418,8 @@ export default function App() {
           <HeightFilter
             visibility={heightVisibility}
             onToggle={toggleHeightCategory}
+            plainBuildings={plainBuildings}
+            onPlainBuildingsChange={setPlainBuildings}
             visibleCount={visibleCount}
             totalCount={mapBuildingCount}
           />
@@ -456,6 +459,7 @@ export default function App() {
             <div className="map-container">
               <DroneMap
                 buildings={filteredBuildings}
+                useHeightColors={!plainBuildings}
                 flights={flights}
                 selectedFlightIndex={selectedFlightIndex}
                 dronePosition={displayDrone}
