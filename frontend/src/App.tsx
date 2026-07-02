@@ -12,9 +12,10 @@ import { useDroneAnimation } from "./hooks/useDroneAnimation";
 import { defaultRouteFromCenter, planPathBetween } from "./utils/flightPath";
 import type { BuildingCollection, FlightPath, PathResponse } from "./types/geo";
 import {
-  ALL_HEIGHT_CATEGORY_IDS,
-  buildingHeightCategory,
-  type HeightCategoryId,
+  defaultHeightVisibility,
+  isBuildingVisible,
+  type FilterHeightCategoryId,
+  type HeightVisibility,
 } from "./utils/buildingHeightColor";
 import ProgressUI from "./components/ProgressUI";
 import "./App.css";
@@ -44,9 +45,9 @@ export default function App() {
     "Loading map bounds…"
   );
   const [status, setStatus] = useState("Idle");
-  const [enabledHeightCategories, setEnabledHeightCategories] = useState<
-    Set<HeightCategoryId>
-  >(() => new Set(ALL_HEIGHT_CATEGORY_IDS));
+  const [heightVisibility, setHeightVisibility] = useState<HeightVisibility>(
+    defaultHeightVisibility
+  );
   const [steps, setSteps] = useState(0);
   const [distance, setDistance] = useState<number | null>(null);
   const [reward, setReward] = useState(0);
@@ -268,14 +269,11 @@ export default function App() {
 
   const filteredBuildings = useMemo((): BuildingCollection | null => {
     if (!buildings) return null;
-    if (enabledHeightCategories.size === ALL_HEIGHT_CATEGORY_IDS.length) {
-      return buildings;
-    }
     const features = buildings.features.filter((f) =>
-      enabledHeightCategories.has(buildingHeightCategory(f.properties))
+      isBuildingVisible(f.properties, heightVisibility)
     );
     return {
-      ...buildings,
+      type: "FeatureCollection",
       features,
       meta: {
         total: buildings.meta?.total ?? buildings.features.length,
@@ -283,15 +281,10 @@ export default function App() {
         offset: 0,
       },
     };
-  }, [buildings, enabledHeightCategories]);
+  }, [buildings, heightVisibility]);
 
-  const toggleHeightCategory = useCallback((id: HeightCategoryId) => {
-    setEnabledHeightCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggleHeightCategory = useCallback((id: FilterHeightCategoryId) => {
+    setHeightVisibility((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
   const visibleCount = filteredBuildings?.features.length ?? 0;
@@ -422,7 +415,7 @@ export default function App() {
           </div>
 
           <HeightFilter
-            enabled={enabledHeightCategories}
+            visibility={heightVisibility}
             onToggle={toggleHeightCategory}
             visibleCount={visibleCount}
             totalCount={mapBuildingCount}

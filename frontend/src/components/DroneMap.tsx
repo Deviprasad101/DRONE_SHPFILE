@@ -69,12 +69,18 @@ const TRAJ_COLORS = [
 ];
 
 function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
+  const featureCount = buildings?.features.length ?? 0;
+
   return useMemo(() => {
     if (!buildings?.features?.length) return [];
+    const collection: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: buildings.features,
+    };
     return [
       new GeoJsonLayer({
         id: "buildings-3d",
-        data: buildings as GeoJSON.FeatureCollection,
+        data: collection,
         coordinateSystem: LNGLAT,
         extruded: true,
         wireframe: false,
@@ -94,9 +100,14 @@ function useBuildingLayers(buildings: BuildingCollection | null): Layer[] {
         pickable: true,
         autoHighlight: true,
         highlightColor: [255, 255, 255, 80],
+        updateTriggers: {
+          data: featureCount,
+          getFillColor: featureCount,
+          getElevation: featureCount,
+        },
       }),
     ];
-  }, [buildings]);
+  }, [buildings, featureCount]);
 }
 
 function useFlightLayers(
